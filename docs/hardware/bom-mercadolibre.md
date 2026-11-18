@@ -37,7 +37,25 @@
 | :--- | :--- | :--- | :--- |
 | **Propuesta A** *(Nano + Celular)* | Módulo Bluetooth **`HC-05`** (o **`ESP8266 ESP-01S`** con adaptador) | `modulo bluetooth hc-05 arduino` | Comunica tu `Arduino Nano` sin cables con el celular Android (dejando al celular enchufado a su cargador original) |
 | **Propuesta B** *(Nano + ESP32-CAM)* | **`ESP32-CAM` + Base `ESP32-CAM-MB` (con USB)** + Tarjeta `MicroSD 8GB/16GB` | `esp32 cam con base programadora mb ov2640` | Toma fotos de la pecera, las guarda en `MicroSD` si se corta el Wi-Fi y envía la cola del Nano a Telegram al volver internet |
-| **Propuesta C** *(ESP32 + Celular)* | **`ESP32 NodeMCU-32S` (30 pines)** | `esp32 nodemcu 30 pines wifi bluetooth` | Reemplaza al Nano o trabaja solo; pide fotos por Wi-Fi al celular (`IP Webcam`), usa Hotspot local en corte y envía a Telegram al reconectar |
+| **Propuesta C (Elegida)** *(ESP32 + Celular)* | **`ESP32 NodeMCU-32S` (30 pines)** | `esp32 nodemcu 30 pines wifi bluetooth` | Reemplaza al Nano o trabaja solo; pide fotos por Wi-Fi al celular (`IP Webcam`), usa Hotspot local en corte y envía a Telegram al reconectar |
+
+---
+
+### C. Relevamiento de Precios Actuales en Mercado Libre Argentina (Alternativa ESP32)
+
+> **Precios relevados en `mercadolibre.com.ar`** (sin costo de envío; se recomienda agrupar en carrito **Full** de un mismo vendedor de electrónica):
+
+| # | Componente (Alternativa ESP32) | Rango de Precio en MeLi AR ($ ARS) | Precio Promedio Est. ($ ARS) | Notas de Compra |
+| :-: | :--- | :---: | :---: | :--- |
+| **1** | **ESP32 DevKit / NodeMCU 30 o 38 pines Wi-Fi** | `$9.500 – $18.500` | **`$14.000`** | Placa sola *(con shield bornera: `$15.000–$24.000`)* |
+| *1b* | *(Comparativa)* **ESP32-CAM + Base USB `ESP32-CAM-MB`** | `$25.000 – $30.000` | *(`$27.500`)* | Solo si se optara por cámara `OV2640` integrada |
+| **2** | **Módulo RTC DS3231 I2C (`ZS-042` con `AT24C32`)** | `$5.800 – $8.200` | **`$7.000`** | Verificar en la publicación que incluya la pila `CR2032` |
+| **3** | **Módulo Emisor Infrarrojo `KY-005` (`940nm`)** | `$2.500 – $3.200` | **`$2.850`** | Suele venderse también en combo con el `KY-022` |
+| **4** | **Módulo Receptor Infrarrojo `KY-022` (`VS1838B 38kHz`)** | `$2.000 – $3.700` | **`$2.850`** | Para clonar el control remoto original de la pecera |
+| **5** | **Módulo Cargador Litio `TP4056` con protección (6 pines)** | `$1.900 – $4.500` | **`$3.200`** | Para usar con las celdas de litio guardadas en casa |
+| **6** | **Portapilas `3x AA` o `4x AA` con cables** | `$2.900 – $7.500` | **`$5.000`** | Respaldo alternativo con pilas comunes |
+| **7** | **Diodos Schottky (`1N5819` / `1N5822` 3A) + `2N2222` + Resistencias** | `$1.500 – $3.000` *(sueltos)* / `$8.000 – $15.000` *(packs MeLi)* | **`$2.500` *(casa electrónica)* / `$11.000` *(packs MeLi)*** | En MeLi se venden en packs x10/x20; en mostrador cuestan `$50–$1.000` c/u |
+| — | **TOTAL ESTIMADO (Alternativa ESP32 + Respaldo + IR + RTC)** | **`$26.100 – $58.600`** | **`~$37.400` *(pasivos sueltos)* / `~$46.000` *(packs MeLi)*** | Si tus celdas de litio guardadas funcionan, te ahorrás el portapilas (`-$5.000`) |
 
 ---
 
