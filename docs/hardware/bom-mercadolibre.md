@@ -52,10 +52,10 @@
 | **2** | **Módulo RTC DS3231 I2C (`ZS-042` con `AT24C32`)** | `$5.800 – $8.200` | **`$7.000`** | Verificar en la publicación que incluya la pila `CR2032` |
 | **3** | **Módulo Emisor Infrarrojo `KY-005` (`940nm`)** | `$2.500 – $3.200` | **`$2.850`** | Suele venderse también en combo con el `KY-022` |
 | **4** | **Módulo Receptor Infrarrojo `KY-022` (`VS1838B 38kHz`)** | `$2.000 – $3.700` | **`$2.850`** | Para clonar el control remoto original de la pecera |
-| **5** | **Módulo Cargador Litio `TP4056` con protección (6 pines)** | `$1.900 – $4.500` | **`$3.200`** | Para usar con las celdas de litio guardadas en casa |
-| **6** | **Portapilas `3x AA` o `4x AA` con cables** | `$2.900 – $7.500` | **`$5.000`** | Respaldo alternativo con pilas comunes |
-| **7** | **Diodos Schottky (`1N5819` / `1N5822` 3A) + `2N2222` + Resistencias** | `$1.500 – $3.000` *(sueltos)* / `$8.000 – $15.000` *(packs MeLi)* | **`$2.500` *(casa electrónica)* / `$11.000` *(packs MeLi)*** | En MeLi se venden en packs x10/x20; en mostrador cuestan `$50–$1.000` c/u |
-| — | **TOTAL ESTIMADO (Alternativa ESP32 + Respaldo + IR + RTC)** | **`$26.100 – $58.600`** | **`~$37.400` *(pasivos sueltos)* / `~$46.000` *(packs MeLi)*** | Si tus celdas de litio guardadas funcionan, te ahorrás el portapilas (`-$5.000`) |
+| **5** | **Módulo Cargador Litio `TP4056` con protección (6 pines)** | `$1.900 – $4.500` | **`$3.200`** | Para cargar tus **3 celdas `Sanyo UR18650ZT` (`> 3.0V`)** recicladas |
+| **6** | **Portapilas `1x 18650` (o `2x 18650` en paralelo) + Step-Up `MT3608`** | `$2.500 – $5.500` | **`$3.800`** | Al tener `3x UR18650ZT` sanas (`$0 ARS`), el `MT3608` eleva `3.7V -> 4.8V` estables para el ESP32 |
+| **7** | **Diodos Schottky (`1N5822` 3A / `1N5819`) + `2N2222` + Resistencias** | `$1.500 – $3.000` *(sueltos)* / `$8.000 – $15.000` *(packs MeLi)* | **`$2.500` *(casa electrónica)* / `$11.000` *(packs MeLi)*** | En MeLi se venden en packs x10/x20; en mostrador cuestan `$50–$1.000` c/u |
+| — | **TOTAL ESTIMADO (ESP32 + Tus Celdas `UR18650ZT` + IR + RTC)** | **`$25.200 – $53.600`** | **`~$36.200` *(pasivos sueltos)* / `~$44.700` *(packs MeLi)*** | **$0 ARS en baterías** gracias a tus 3 celdas `UR18650ZT` (`> 3.0V`) |
 
 ---
 
