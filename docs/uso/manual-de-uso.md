@@ -44,6 +44,15 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `r
 - **Clonador de Control Remoto Original (`IrCloneSlot`):**
   - Permite capturar los 3 botones del control original de la pecera (`ON`, `BLANCO`, `OFF`) desde el receptor `KY-022` y almacenarlos en `irCodes` (`codeOn`, `codeWhite`, `codeOff`) para su persistencia en `EEPROM` / `NVS`.
 
+### SLICE-04: Cola Circular Offline (*Store-and-Forward*), Captura de Cámara y Envío a Telegram (Issue #4)
+Implementado en [`include/controller.h`](../../include/controller.h) mediante `pushOfflineEvent()`, `popOfflineEvent()`, `dispatchNextQueuedEvent()` y `processRemoteCommand()`:
+- **Cola Circular Estática (`OFFLINE_QUEUE_CAPACITY = 16` eventos en RAM fija):**
+  - Almacena en orden cronológico los eventos (`EVT_POWER_LOST`, `EVT_POWER_RESTORED`, `EVT_LAMP_WHITE_APPLIED`, `EVT_LAMP_OFF_APPLIED`, `EVT_SCHEDULE_ON`, `EVT_SCHEDULE_OFF`, `EVT_PHOTO_REQUESTED`) junto con su marca horaria exacta del `RTC DS3231` (`timestampMinutes` `0..1439`), el modo de lámpara (`lampMode`) y la solicitud de fotografía (`photoRequested`).
+  - **Sin pérdida durante cortes de luz o sin Wi-Fi:** Mientras `internetAvailable == false` (o `onBatteryBackup == true`), `dispatchNextQueuedEvent()` retiene los eventos en memoria. Si se superan los `16` eventos acumulados, el buffer circular sobrescribe el registro más antiguo e incrementa `queueOverwrites`.
+  - **Despacho FIFO diferido:** Apenas vuelve el Wi-Fi doméstico y los `220V` están estables (`internetAvailable == true`), extrae y envía un evento por ciclo en orden FIFO (`TELEMETRY_DISPATCH_MS = 500 ms` en [`src/main.cpp`](../../src/main.cpp)) hacia el puente/Bot de Telegram.
+- **Disparo de Cámara y Procesamiento de Comandos:**
+  - Ante eventos relevantes o comandos `/foto`, activa `localCameraTriggerPending` para capturar una imagen local de la pecera (termómetro, filtro e iluminación) y procesa comandos de texto plano (`char[]`, `0 bytes` de `heap`) vía Telegram o Monitor Serie.
+
 ---
 
 ## 2. Tabla de Pines por Placa (`SLICE-01` + `SLICE-02` + `SLICE-03`)
@@ -133,7 +142,47 @@ Para triplicar el alcance hacia el receptor de la pecera y proteger el pin GPIO:
 
 ---
 
-## 5. Puesta en Marcha y Verificación
+## 5. Cola Offline (*Store-and-Forward*) y Comandos Remotos (Telegram / Serial)
+
+### A. Funcionamiento de la Cola Circular (`16` Eventos en RAM Estática)
+- Ante un corte de `220V`, el router Wi-Fi doméstico se apaga y el sistema queda sin salida a internet (`internetAvailable == false`).
+- Todos los sucesos (`EVT_POWER_LOST`, `EVT_POWER_RESTORED`, `EVT_LAMP_WHITE_APPLIED`, `EVT_LAMP_OFF_APPLIED`, `EVT_SCHEDULE_ON`, `EVT_SCHEDULE_OFF`, `EVT_PHOTO_REQUESTED`) se encolan en `eventQueue` con la hora exacta (`0..1439` min) del `RTC DS3231`.
+- Al regresar los `220V` y restablecerse el Wi-Fi (`internetAvailable == true`), `dispatchNextQueuedEvent()` vacía la cola en orden cronológico **FIFO** (un evento cada `500 ms` por el puerto serie/puente `[TELEGRAM-TX]`) sin perder el historial ocurrido durante el apagón.
+
+### B. Tabla de Comandos Remotos (Bot de Telegram / Monitor Serie a `115200 baudios`)
+
+| Comando | Origen | Acción en el Controlador | Respuesta / Efecto |
+| :--- | :---: | :--- | :--- |
+| **`/estado`** | Telegram / Serial | Consulta estado general del sistema | Devuelve `220V:OK\|CORTE LUZ:BLANCA\|OFF COLA:<N>` |
+| **`/cola`** | Telegram / Serial | Consulta la cola *Store-and-Forward* | Devuelve `PENDIENTES:<N> OVERWRITES:<M>` |
+| **`/foto`** | Telegram / Serial | Encola `EVT_PHOTO_REQUESTED` con hora RTC | Activa `localCameraTriggerPending` (`[CAM-TRIGGER]`) y responde `OK: Foto solicitada` |
+| **`/luz_blanca`** | Telegram / Serial | Pasa a `POLICY_MANUAL_OVERRIDE` y solicita `LAMP_WHITE` | Dispara la secuencia IR `ON -> WHITE -> WHITE` (`250 ms`) |
+| **`/luz_off`** | Telegram / Serial | Pasa a `POLICY_MANUAL_OVERRIDE` y solicita `LAMP_OFF` | Dispara la secuencia IR doble `OFF -> OFF` (`250 ms`) |
+| **`/auto`** | Telegram / Serial | Restaura `POLICY_AUTO_RTC` y evalúa el `RTC DS3231` | Ajusta automáticamente la lámpara según la ventana horaria configurada |
+| **`/horario HH:MM HH:MM`** | Telegram / Serial | Configura inicio y fin del fotoperíodo (ej. `/horario 09:30 19:00`) | Actualiza `scheduleStartMin` / `scheduleEndMin` y responde `OK: Horario actualizado` |
+| **`/clonar_ir`** | Telegram / Serial | Inicia el asistente de captura IR (`CLONE_WAIT_ON`) | Espera los botones `ON`, `WHITE` y `OFF` en el receptor `KY-022` |
+| **`/net_on`** | Serial / Puente | Habilita el estado de conectividad (`gBridgeInternetReady = true`) | Reanuda el despacho FIFO de eventos acumulados hacia Telegram |
+| **`/net_off`** | Serial / Puente | Indica pérdida de salida a internet (`gBridgeInternetReady = false`) | Activa retención *Store-and-Forward* sin descartar eventos |
+
+---
+
+## 6. Vínculo con Celular Android sin SIM (*IP Webcam* + Hotspot Local + Telegram)
+
+El sistema aprovecha un **celular Android sin tarjeta SIM** enchufado permanentemente a su cargador original, apuntando a la pecera para supervisar visualmente el **termómetro analógico, el chorro del filtro y el color real de la lámpara**:
+
+1. **Operación normal (con `220V` y Wi-Fi doméstico):**
+   - El celular corre la app ***IP Webcam*** conectada al Wi-Fi de la casa (`http://<ip>:8080/shot.jpg`).
+   - El controlador (vía **ESP32 Wi-Fi** o **Arduino Nano** + puente/Bluetooth `HC-05`) solicita capturas ante cada evento o comando `/foto` y envía las notificaciones e imágenes en tiempo real al Bot de Telegram.
+2. **Durante un corte de luz (`220V` caídos, sin router doméstico):**
+   - El controlador continúa funcionando con la celda `UR18650ZT` + `TP4056` + `MT3608` y registra cada cambio en la cola circular con su timestamp del `RTC DS3231`.
+   - El celular (respaldado por su propia batería interna) habilita su **Hotspot Wi-Fi local (sin internet)** o vínculo directo con el controlador, permitiendo disparar y guardar localmente las fotografías (`[CAM-TRIGGER]`) durante el apagón.
+3. **Retorno de `220V` y reconexión del Wi-Fi doméstico:**
+   - Tras los `3000 ms` de estabilización de la lámpara, el controlador la fija en `LAMP_WHITE` (si es de día) o `LAMP_OFF` (si es de noche), captura la foto de verificación y, al detectarse nuevamente internet (`internetAvailable == true`), despacha en orden FIFO todos los eventos almacenados y sus fotos hacia **Telegram**.
+
+---
+
+## 7. Puesta en Marcha y Verificación
 1. Verificar con multímetro que sin cargador USB (`220V` desconectado) el pin `MAINS_SENSE` marque `0V` y la placa siga encendida desde la batería (`~4.3V–4.5V` tras `D2`).
-2. Abrir el monitor serie a **`115200 baudios`** para verificar el arranque del controlador, la hora del `RTC DS3231` y las transiciones IR/energía.
+2. Abrir el monitor serie a **`115200 baudios`** para verificar `[BOOT] ControladorPeceraDistancia - SLICE-04 Inicializado`, la hora del `RTC DS3231` y las transiciones IR/energía.
+3. Probar la cola offline enviando `/net_off`, ejecutando `/foto` y desconectando/reconectando el cargador `5V`, y luego enviar `/net_on` para observar el despacho FIFO por `[TELEGRAM-TX]`.
 
