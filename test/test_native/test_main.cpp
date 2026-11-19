@@ -1,4 +1,5 @@
 #include <unity.h>
+#include <string.h>
 #include "controller.h"
 
 // Incluimos la implementación pura para entorno nativo de tests
@@ -222,6 +223,116 @@ void test_slice03_ir_clone_3_slots(void) {
     TEST_ASSERT_EQUAL_UINT8(AppLogic::CLONE_NONE, st.cloneSlot);
 }
 
+void test_slice04_offline_queue_store_and_forward_blackout_flow(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    AppLogic::setPhotoperiodSchedule(st, 600, 1080); // 10:00 a 18:00
+    st.currentRtcMin = 135; // 02:15 AM
+
+    // 1. Se corta la luz a las 02:15 AM (135 min) -> cae Wi-Fi de casa
+    AppLogic::updateMainsPower(st, false, 135, 1000);
+    AppLogic::updateMainsPower(st, false, 135, 1500);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_LOST, st.mainsStatus);
+    TEST_ASSERT_EQUAL_UINT8(1, st.queueCount);
+
+    // 2. Vuelve la luz a las 03:40 AM (220 min), pero el router Wi-Fi aún no levantó (internetReady = false)
+    st.currentRtcMin = 220;
+    AppLogic::updateMainsPower(st, true, 220, 10000);
+    AppLogic::updateMainsPower(st, true, 220, 10500); // MAINS_RESTORING_WAIT -> encola EVT_POWER_RESTORED
+    AppLogic::updateMainsPower(st, true, 220, 13500); // 3000ms cumplidos -> postRestoreActionPending = true
+    TEST_ASSERT_TRUE(st.postRestoreActionPending);
+    TEST_ASSERT_EQUAL_UINT8(2, st.queueCount);
+
+    // 3. El controlador evalúa el fotoperíodo a las 03:40 AM -> decide LAMP_OFF y ejecuta la secuencia IR
+    AppLogic::evaluatePhotoperiod(st, 220);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_OFF, st.targetLampMode);
+    AppLogic::requestLampTransition(st, st.targetLampMode, 13500);
+    AppLogic::stepIrSequencer(st, 13500, nullptr);
+    AppLogic::stepIrSequencer(st, 13750, nullptr); // Finaliza IR_CMD_OFF -> encola EVT_LAMP_OFF_APPLIED
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_OFF, st.appliedLampMode);
+    TEST_ASSERT_EQUAL_UINT8(3, st.queueCount);
+
+    // 4. Mientras no hay internet (internetReady = false), la cola NO se vacía
+    AppLogic::OfflineEvent ev;
+    TEST_ASSERT_FALSE(AppLogic::dispatchNextQueuedEvent(st, false, ev));
+    TEST_ASSERT_EQUAL_UINT8(3, st.queueCount);
+
+    // 5. Vuelve el Wi-Fi doméstico (internetReady = true) -> se despachan en orden FIFO exacto hacia Telegram
+    TEST_ASSERT_TRUE(AppLogic::dispatchNextQueuedEvent(st, true, ev));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::EVT_POWER_LOST, ev.eventType);
+    TEST_ASSERT_EQUAL_UINT16(135, ev.timestampMinutes);
+
+    TEST_ASSERT_TRUE(AppLogic::dispatchNextQueuedEvent(st, true, ev));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::EVT_POWER_RESTORED, ev.eventType);
+    TEST_ASSERT_EQUAL_UINT16(220, ev.timestampMinutes);
+
+    TEST_ASSERT_TRUE(AppLogic::dispatchNextQueuedEvent(st, true, ev));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::EVT_LAMP_OFF_APPLIED, ev.eventType);
+    TEST_ASSERT_EQUAL_UINT16(220, ev.timestampMinutes);
+
+    TEST_ASSERT_EQUAL_UINT8(0, st.queueCount);
+    TEST_ASSERT_FALSE(AppLogic::dispatchNextQueuedEvent(st, true, ev));
+}
+
+void test_slice04_ring_buffer_overflow_overwrites_oldest(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+
+    // Insertar 18 eventos en cola de capacidad 16
+    for (uint16_t i = 0; i < 18; ++i) {
+        AppLogic::pushOfflineEvent(st, AppLogic::EVT_PHOTO_REQUESTED, static_cast<uint16_t>(100 + i), AppLogic::LAMP_WHITE, true);
+    }
+
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::OFFLINE_QUEUE_CAPACITY, st.queueCount);
+    TEST_ASSERT_EQUAL_UINT8(2, st.queueOverwrites);
+
+    // El evento más antiguo conservado debe ser el #2 (timestamp 102)
+    AppLogic::OfflineEvent ev;
+    TEST_ASSERT_TRUE(AppLogic::popOfflineEvent(st, ev));
+    TEST_ASSERT_EQUAL_UINT16(102, ev.timestampMinutes);
+}
+
+void test_slice04_remote_commands_parser(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    char reply[96];
+
+    // /horario 09:30 19:00 -> 570 a 1140
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/horario 09:30 19:00", 600, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT16(570, st.scheduleStartMin);
+    TEST_ASSERT_EQUAL_UINT16(1140, st.scheduleEndMin);
+
+    // /luz_blanca -> POLICY_MANUAL_OVERRIDE + LAMP_WHITE
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/luz_blanca", 200, 2000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::POLICY_MANUAL_OVERRIDE, st.controlPolicy);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_WHITE, st.targetLampMode);
+
+    // /luz_off -> POLICY_MANUAL_OVERRIDE + LAMP_OFF
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/luz_off", 700, 3000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::POLICY_MANUAL_OVERRIDE, st.controlPolicy);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_OFF, st.targetLampMode);
+
+    // /auto -> vuelve a POLICY_AUTO_RTC
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/auto", 700, 4000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::POLICY_AUTO_RTC, st.controlPolicy);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_WHITE, st.targetLampMode);
+
+    // /foto -> encola EVT_PHOTO_REQUESTED y activa localCameraTriggerPending
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/foto", 705, 5000, reply, sizeof(reply)));
+    TEST_ASSERT_TRUE(st.localCameraTriggerPending);
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT8(1, st.queueCount);
+
+    // /clonar_ir -> inicia CLONE_WAIT_ON
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/clonar_ir", 705, 6000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::CLONE_WAIT_ON, st.cloneSlot);
+
+    // /estado y /cola -> devuelven true y texto no vacío
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/estado", 705, 7000, reply, sizeof(reply)));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, static_cast<uint32_t>(strlen(reply)));
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/cola", 705, 7500, reply, sizeof(reply)));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, static_cast<uint32_t>(strlen(reply)));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
@@ -234,5 +345,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_slice03_ir_sequencer_lamp_white_3_steps);
     RUN_TEST(test_slice03_ir_sequencer_lamp_off_2_steps);
     RUN_TEST(test_slice03_ir_clone_3_slots);
+    RUN_TEST(test_slice04_offline_queue_store_and_forward_blackout_flow);
+    RUN_TEST(test_slice04_ring_buffer_overflow_overwrites_oldest);
+    RUN_TEST(test_slice04_remote_commands_parser);
     return UNITY_END();
 }
