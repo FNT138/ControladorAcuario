@@ -149,6 +149,11 @@ bool popOfflineEvent(SystemState& state, OfflineEvent& outEvent);
 bool dispatchNextQueuedEvent(SystemState& state, bool internetReady, OfflineEvent& outDispatched);
 bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentRtcMin, uint32_t currentMs, char* replyBuf, size_t replyBufSize);
 
+// SLICE-05: Dosificador de Emergencia por Tolva Calibrada en Milisegundos (~3 pellets)
+bool setFeederPulseDuration(SystemState& state, uint16_t pulseMs);
+bool triggerEmergencyFeed(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs, bool forceIgnoreCooldown);
+bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs);
+
 } // namespace AppLogic
 ```
 
@@ -276,3 +281,46 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
 - **Conventional Commit Asignado:**
   - Implementación: `feat(telemetria-cola): encolar eventos sin conexion y despachar a telegram al reconectar`
   - Documentación: `docs(telemetria-cola): documentar cola offline store-and-forward y comandos de telegram`
+
+---
+
+## SLICE-05: Máquina de Estados No Bloqueante del Alimentador de Emergencia en `ms` (~3 Pellets)
+
+- **Funcionalidad End-to-End:**
+  - Controlar el motor/servomotor de la tolva de emergencia (`GPIO 1` en `ESP32-C3 SuperMini`, `GPIO 25` en `ESP32`, `D5` en `Arduino Nano`) mediante un pulso no bloqueante de duración calibrada `feederPulseMs` (por defecto `350 ms`, rango permitido `50..2000 ms` para liberar exactamente ~3 pellets de fondo).
+  - **Protecciones críticas de seguridad:**
+    1. Tope duro: `setFeederPulseDuration()` rechaza cualquier valor `< 50 ms` o `> 2000 ms` (`MAX_FEEDER_PULSE_MS`).
+    2. Bloqueo en apagón: `triggerEmergencyFeed()` rechaza accionar el motor si `onBatteryBackup == true` (`MAINS_LOST`) para nunca descargar la celda `Sanyo UR18650ZT`.
+    3. *Cooldown* anti-doble disparo: tras iniciar o completar una descarga, bloquea nuevos disparos durante `feederCooldownMs` (`60000 ms` por defecto) salvo que `forceIgnoreCooldown == true` (modo calibración en casa).
+  - Al finalizar el pulso de `feederPulseMs` en `stepFeeder()`, apaga/cierra el motor (`feederOutputActive = false`), incrementa `feedDispensedCount++`, pasa a `FEEDER_COOLDOWN` y encola automáticamente `EVT_FEED_DISPENSED` con `photoRequested = true` para confirmar visualmente por cámara que cayeron los 3 pellets.
+  - Además, pre-carga en `initState()` los códigos NEC universales del control remoto de 24 teclas (`ON = 0x00F7C03F`, `WHITE = 0x00F7E01F`, `OFF = 0x00F740BF`).
+- **Archivos a Modificar por el `implementador`:**
+  1. `include/controller.h`
+  2. `src/controller.cpp`
+  3. `src/main.cpp`
+- **Criterios de Verificación para el `tester`:**
+  - Tests unitarios nativos validando validación de rango `50..2000 ms`, pulso exacto de `350 ms`, bloqueo en batería (`onBatteryBackup == true`), bloqueo por *cooldown*, bypass con `forceIgnoreCooldown == true` y encolado de `EVT_FEED_DISPENSED` con `photoRequested == true`.
+  - Compilación limpia (`0 warnings`, `RAM < 50%` en Arduino Nano).
+- **Conventional Commit Asignado:**
+  - Implementación: `feat(alimentador): implementar dosificador no bloqueante en ms con cooldown y seguridad (Closes #5)`
+  - Documentación: `docs(alimentador): documentar conexionado de servo o motor dc y protecciones de tolva (Refs #5)`
+
+---
+
+## SLICE-06: Comandos Remotos `/alimentar`, `/alimentar_forzar` y `/calibrar_ms`
+
+- **Funcionalidad End-to-End:**
+  - Extender `processRemoteCommand()` en `src/controller.cpp` (con buffers `char[]` estáticos):
+    - `/calibrar_ms <50..2000>`: ajusta `feederPulseMs` en vivo para calibrar la caída de los 3 pellets de fondo.
+    - `/alimentar`: ejecuta `triggerEmergencyFeed(state, currentRtcMin, currentMs, false)` respetando el *cooldown* y el bloqueo en corte de luz.
+    - `/alimentar_forzar`: ejecuta `triggerEmergencyFeed(state, currentRtcMin, currentMs, true)` ignorando el *cooldown* para pruebas de calibración con plato en casa.
+    - Actualizar `/estado` para reportar `FEED_MS=<ms>` y `DOSIS=<N>`.
+- **Archivos a Modificar por el `implementador`:**
+  1. `include/controller.h`
+  2. `src/controller.cpp`
+  3. `src/main.cpp`
+- **Criterios de Verificación para el `tester`:**
+  - Tests unitarios nativos verificando `/calibrar_ms 420`, rechazo de `/calibrar_ms 5000`, disparo con `/alimentar`, bloqueo de segundo `/alimentar` inmediato por *cooldown*, éxito con `/alimentar_forzar` y presencia de `DOSIS=` en `/estado`.
+- **Conventional Commit Asignado:**
+  - Implementación: `feat(alimentador-cmd): agregar comandos /alimentar y /calibrar_ms con telemetria (Closes #6)`
+  - Documentación: `docs(alimentador-cmd): documentar calibracion de 3 pellets y comandos de alimentacion (Refs #6)`

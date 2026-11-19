@@ -136,8 +136,9 @@ Como el celular **no tiene tarjeta SIM** y el router Wi-Fi de la casa se apaga d
 | **`PIN_IR_RX`** | Receptor IR `KY-022` (`VS1838B`) | **`D4`** (`INPUT`) | **`GPIO 15`** (`INPUT`) | Salida activa en `LOW` a `38 kHz` |
 | **`PIN_I2C_SDA`** | Reloj Tiempo Real `RTC DS3231` | **`A4`** (`SDA`) | **`GPIO 21`** (`SDA`) | Bus I2C `0x68` (+ EEPROM `AT24C32` `0x57`) |
 | **`PIN_I2C_SCL`** | Reloj Tiempo Real `RTC DS3231` | **`A5`** (`SCL`) | **`GPIO 22`** (`SCL`) | Bus I2C `0x68` (+ EEPROM `AT24C32` `0x57`) |
-| **`PIN_BAT_ADC`** | Divisor tensión batería de respaldo | **`A0`** (`ADC 10-bit`) | **`GPIO 35`** (`ADC 12-bit`) | Monitoreo opcional de carga de pilas/litio |
-| **`PIN_STATUS_LED`** | LED de estado de placa | **`D13`** (`OUTPUT`) | **`GPIO 2`** (`OUTPUT`) | Parpadeo no bloqueante de diagnóstico |
+| **`PIN_BAT_ADC`** | Divisor tensión batería de respaldo | **`A0`** (`ADC 10-bit`) | **`GPIO 0`** (`C3`) / **`GPIO 35`** (`ESP32`) | Monitoreo opcional de carga de celda `UR18650ZT` |
+| **`PIN_FEEDER`** | Servomotor 3 cables / Motor DC + `8050SS` | **`D5`** (`OUTPUT` / PWM) | **`GPIO 1`** (`C3`) / **`GPIO 25`** (`ESP32`) | Pulso calibrado `feederPulseMs` (`50..2000 ms`) para ~3 pellets |
+| **`PIN_STATUS_LED`** | LED de estado de placa | **`D13`** (`OUTPUT`) | **`GPIO 8`** (`C3`) / **`GPIO 2`** (`ESP32`) | Parpadeo no bloqueante de diagnóstico |
 
 ---
 

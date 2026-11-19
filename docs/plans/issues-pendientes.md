@@ -8,3 +8,5 @@
 | **#2** | `SLICE-02`: Fotoperíodo Diario (`RTC DS3231`) y Decisión Post-Corte | Publicada | `feat(fotoperiodo): evaluar ventana horaria rtc y decidir estado de luz post-corte (Closes #2)` |
 | **#3** | `SLICE-03`: Secuenciador Infrarrojo (`IR TX`) y Clonador (`IR RX`) | Publicada | `feat(control-ir): implementar secuenciador ir no bloqueante y clonado de control (Closes #3)` |
 | **#4** | `SLICE-04`: Cola Circular Offline (*Store-and-Forward*) y Telegram | Publicada | `feat(telemetria-cola): encolar eventos sin conexion y despachar a telegram al reconectar (Closes #4)` |
+| **#5** | `SLICE-05`: Dosificador No Bloqueante de Emergencia en `ms` (~3 Pellets) | Publicada | `feat(alimentador): implementar dosificador no bloqueante en ms con cooldown y seguridad (Closes #5)` |
+| **#6** | `SLICE-06`: Comandos Remotos `/alimentar`, `/alimentar_forzar` y `/calibrar_ms` | Publicada | `feat(alimentador-cmd): agregar comandos /alimentar y /calibrar_ms con telemetria (Closes #6)` |
