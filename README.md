@@ -1,13 +1,32 @@
-# Proyecto Arduino — Esquema Multiagente (Vertical Slicing + Conventional Commits)
+# Controlador de Pecera a Distancia (`ControladorPeceraDistancia`)
 
-Plantilla de proyecto Arduino optimizada para desarrollo multiagente con bajo consumo de tokens, **Vertical Slicing**, **Conventional Commits** y selección de hardware basada en componentes genéricos de **Mercado Libre Argentina**.
+Controlador no bloqueante multi-placa (**Arduino Nano V3**, **ESP32 Clásico** y **ESP32-C3 SuperMini**) para automatización de iluminación LED IR de pecera con respaldo de energía ante cortes de `220V`, reloj `RTC DS3231` y registro de eventos.
 
-## Estructura de los 6 Subagentes
+---
+
+## Estado de Vertical Slices
+
+| Slice | Issue | Funcionalidad | Estado | Documentación |
+| :--- | :---: | :--- | :---: | :--- |
+| **`SLICE-01`** | `#1` | Detección no bloqueante de corte/retorno `220V` (`500 ms` debounce + `3000 ms` estabilización) y respaldo híbrido (`UR18650ZT` + `TP4056` + `MT3608` + `1N5819`/`1N5822`) | Documentado | [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md) |
+
+### Resumen de Pines de Energía y Detección 220V (`SLICE-01`)
+
+| Señal | ESP32-C3 SuperMini | ESP32 Clásico | Arduino Nano |
+| :--- | :---: | :---: | :---: |
+| `PIN_MAINS_SENSE` (Divisor `10kΩ/20kΩ` antes de `D1`) | `GPIO 3` | `GPIO 34` | `D2` |
+
+- **Etapa de respaldo:** Celda `UR18650ZT` conectada en `B+`/`B-` del `TP4056` (6 pines) $\rightarrow$ salida `OUT+`/`OUT-` hacia el elevador `MT3608` (calibrado a `4.8V`) $\rightarrow$ diodo Schottky `D2` (`1N5819`/`1N5822`) unido al cátodo de `D1` (`5V` USB) en el pin `5V` de la placa. Ver guía completa en [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md).
+
+---
+
+## Arquitectura Multiagente del Repositorio
+
+Este proyecto sigue una arquitectura **Multiagente con Aislamiento de Contexto**, **Vertical Slicing** y **Conventional Commits** con selección de hardware en **Mercado Libre Argentina**:
 
 - [`AGENTS.md`](AGENTS.md): Orquestador global, protocolo de ahorro de tokens, reglas de Vertical Slicing y Conventional Commits.
-- [`.agents/agents/hardware.md`](.agents/agents/hardware.md): Define el BOM en [`docs/hardware/bom-mercadolibre.md`](docs/hardware/bom-mercadolibre.md) priorizando módulos genéricos, económicos y fáciles de conseguir en Mercado Libre Argentina.
-- [`.agents/agents/planificador.md`](.agents/agents/planificador.md): Diseña cómo funciona el sistema ([`docs/architecture/`](docs/architecture)) y divide el plan en **Vertical Slices** ([`docs/plans/`](docs/plans)).
-- [`.agents/agents/gestor-issues.md`](.agents/agents/gestor-issues.md): Crea, publica y gestiona las issues en GitHub por cada Vertical Slice o bug detectado usando la skill [`git-issues`](.agents/skills/git-issues/SKILL.md).
-- [`.agents/agents/implementador.md`](.agents/agents/implementador.md): Desarrolla únicamente código C/C++ en [`src/`](src) e [`include/`](include) de un Vertical Slice a la vez con Conventional Commits (`feat`, `fix`, `refactor`).
-- [`.agents/agents/tester.md`](.agents/agents/tester.md): Ejecuta únicamente la suite predefinida en [`test/`](test) sin escribir ni modificar código.
-- [`.agents/agents/documentador.md`](.agents/agents/documentador.md): Documenta incrementalmente las funcionalidades y el uso de cada Vertical Slice aprobado en [`docs/uso/`](docs/uso) y `README.md` (`docs(<scope>): ...`).
+- [`docs/hardware/bom-mercadolibre.md`](docs/hardware/bom-mercadolibre.md): Bill of Materials y esquemas eléctricos.
+- [`docs/plans/PLAN-001-base.md`](docs/plans/PLAN-001-base.md): Plan de trabajo por Vertical Slices.
+- [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md): Manual de uso, conexionado y funcionalidades implementadas.
+- [`.agents/agents/hardware.md`](.agents/agents/hardware.md) · [`planificador.md`](.agents/agents/planificador.md) · [`gestor-issues.md`](.agents/agents/gestor-issues.md) · [`implementador.md`](.agents/agents/implementador.md) · [`tester.md`](.agents/agents/tester.md) · [`documentador.md`](.agents/agents/documentador.md)
+
