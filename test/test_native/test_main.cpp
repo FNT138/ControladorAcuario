@@ -13,6 +13,9 @@ void test_initial_state_is_clean(void) {
     TEST_ASSERT_EQUAL_UINT16(0, st.sensorRawValue);
     TEST_ASSERT_FALSE(st.actuatorActive);
     TEST_ASSERT_EQUAL_UINT32(0, st.lastUpdateMs);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_OK, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.onBatteryBackup);
+    TEST_ASSERT_FALSE(st.postRestoreActionPending);
 }
 
 void test_threshold_activation_after_interval(void) {
@@ -29,9 +32,65 @@ void test_threshold_activation_after_interval(void) {
     TEST_ASSERT_EQUAL_UINT16(600, st.sensorRawValue);
 }
 
+void test_slice01_ignore_glitch_under_500ms(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+
+    // Cae 220V en t=1000ms -> entra en debounce
+    AppLogic::updateMainsPower(st, false, 720, 1000);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_DEBOUNCE_LOST, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.onBatteryBackup);
+
+    // A los 300ms (< 500ms) sigue en debounce
+    AppLogic::updateMainsPower(st, false, 720, 1300);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_DEBOUNCE_LOST, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.onBatteryBackup);
+
+    // Vuelve 220V en t=1400ms (microcorte de 400ms < 500ms) -> vuelve a MAINS_OK sin activar batería
+    AppLogic::updateMainsPower(st, true, 720, 1400);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_OK, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.onBatteryBackup);
+    TEST_ASSERT_FALSE(st.postRestoreActionPending);
+}
+
+void test_slice01_detect_power_loss_and_restore_after_3000ms(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+
+    // 1. Cae 220V en t=1000ms y se mantiene LOW por 500ms (t=1500ms) -> MAINS_LOST
+    AppLogic::updateMainsPower(st, false, 840, 1000);
+    AppLogic::updateMainsPower(st, false, 840, 1500);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_LOST, st.mainsStatus);
+    TEST_ASSERT_TRUE(st.onBatteryBackup);
+    TEST_ASSERT_FALSE(st.postRestoreActionPending);
+
+    // 2. Vuelve 220V en t=5000ms -> entra en MAINS_DEBOUNCE_RESTORED
+    AppLogic::updateMainsPower(st, true, 845, 5000);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_DEBOUNCE_RESTORED, st.mainsStatus);
+    TEST_ASSERT_TRUE(st.onBatteryBackup);
+
+    // 3. Cumple 500ms estables en HIGH (t=5500ms) -> pasa a MAINS_RESTORING_WAIT (esperando 3000ms de booteo de lámpara)
+    AppLogic::updateMainsPower(st, true, 845, 5500);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_RESTORING_WAIT, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.onBatteryBackup);
+    TEST_ASSERT_FALSE(st.postRestoreActionPending);
+
+    // 4. A los 2900ms de espera (t=8400ms < 5500+3000) todavía espera estabilización de la lámpara LED
+    AppLogic::updateMainsPower(st, true, 845, 8400);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_RESTORING_WAIT, st.mainsStatus);
+    TEST_ASSERT_FALSE(st.postRestoreActionPending);
+
+    // 5. Al cumplirse los 3000ms (t=8500ms) pasa a MAINS_OK y dispara postRestoreActionPending = true
+    AppLogic::updateMainsPower(st, true, 845, 8500);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::MAINS_OK, st.mainsStatus);
+    TEST_ASSERT_TRUE(st.postRestoreActionPending);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
     RUN_TEST(test_threshold_activation_after_interval);
+    RUN_TEST(test_slice01_ignore_glitch_under_500ms);
+    RUN_TEST(test_slice01_detect_power_loss_and_restore_after_3000ms);
     return UNITY_END();
 }
