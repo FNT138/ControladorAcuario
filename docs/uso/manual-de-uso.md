@@ -64,9 +64,18 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `s
 - **Códigos IR NEC de 24 teclas pre-cargados:**
   - `initState()` carga por defecto los códigos universales del control de 24 teclas (`ON = 0xF7C03F`, `WHITE = 0xF7E01F`, `OFF = 0xF740BF`), listos para usar con LED IR reciclado + transistor `8050SS` sin necesidad de clonar primero.
 
+### SLICE-06: Comandos Remotos de Alimentación y Calibración con Telemetría (Issue #6)
+Implementado en [`src/controller.cpp`](../../src/controller.cpp) dentro de `AppLogic::processRemoteCommand()`:
+- **Comandos de tolva desde Telegram / Serial:**
+  - `/calibrar_ms <50..2000>`: ajusta la duración del pulso de dosificación (`feederPulseMs`).
+  - `/alimentar`: dispara una ración respetando el bloqueo en batería y el cooldown de `60 s`.
+  - `/alimentar_forzar`: dispara una ración ignorando el cooldown de `60 s` (mantiene el bloqueo obligatorio en batería) para pruebas rápidas de calibración en casa.
+- **Telemetría ampliada en `/estado`:**
+  - Añade `FEED_MS=<ms>` (duración calibrada actual) y `DOSIS=<N>` (`feedDispensedCount`, total de raciones entregadas).
+
 ---
 
-## 2. Tabla de Pines por Placa (`SLICE-01` a `SLICE-05`)
+## 2. Tabla de Pines por Placa (`SLICE-01` a `SLICE-06`)
 
 | Señal / Función | ESP32-C3 SuperMini | ESP32 Clásico (NodeMCU-32S / DevKit) | Arduino Nano V3 | Notas Eléctricas |
 | :--- | :---: | :---: | :---: | :--- |
@@ -165,9 +174,12 @@ Para triplicar el alcance hacia el receptor de la pecera y proteger el pin GPIO:
 
 | Comando | Origen | Acción en el Controlador | Respuesta / Efecto |
 | :--- | :---: | :--- | :--- |
-| **`/estado`** | Telegram / Serial | Consulta estado general del sistema | Devuelve `220V:OK\|CORTE LUZ:BLANCA\|OFF COLA:<N>` |
+| **`/estado`** | Telegram / Serial | Consulta estado general y telemetría de tolva | Devuelve `220V:OK\|CORTE LUZ:BLANCA\|OFF COLA:<N> FEED_MS=<ms> DOSIS=<N>` |
 | **`/cola`** | Telegram / Serial | Consulta la cola *Store-and-Forward* | Devuelve `PENDIENTES:<N> OVERWRITES:<M>` |
 | **`/foto`** | Telegram / Serial | Encola `EVT_PHOTO_REQUESTED` con hora RTC | Activa `localCameraTriggerPending` (`[CAM-TRIGGER]`) y responde `OK: Foto solicitada` |
+| **`/calibrar_ms <50..2000>`** | Telegram / Serial | Ajusta duración del pulso del dosificador (`feederPulseMs`) | Responde `OK: Pulso alimentador calibrado` (o `ERR: Rango permitido 50..2000 ms`) |
+| **`/alimentar`** | Telegram / Serial | Dispara una ración respetando bloqueo en batería y cooldown `60 s` | Responde `OK: Alimentando (~3 pellets)` (o `ERR: Alimentador bloqueado (bateria/cooldown)`) |
+| **`/alimentar_forzar`** | Telegram / Serial | Dispara una ración ignorando el cooldown `60 s` (mantiene bloqueo en batería) | Responde `OK: Alimentacion forzada (~3 pellets)` (ideal para calibración en casa) |
 | **`/luz_blanca`** | Telegram / Serial | Pasa a `POLICY_MANUAL_OVERRIDE` y solicita `LAMP_WHITE` | Dispara la secuencia IR `ON -> WHITE -> WHITE` (`250 ms`) |
 | **`/luz_off`** | Telegram / Serial | Pasa a `POLICY_MANUAL_OVERRIDE` y solicita `LAMP_OFF` | Dispara la secuencia IR doble `OFF -> OFF` (`250 ms`) |
 | **`/auto`** | Telegram / Serial | Restaura `POLICY_AUTO_RTC` y evalúa el `RTC DS3231` | Ajusta automáticamente la lámpara según la ventana horaria configurada |
@@ -229,6 +241,16 @@ El sistema aprovecha un **celular Android sin tarjeta SIM** enchufado permanente
   - **`OFF`:** `0xF740BF` (`0x00F740BF`)
 - **Variante económica con componentes reciclados:**
   - En lugar del módulo `KY-005` + `2N2222`, puede usarse un **LED IR reciclado** accionado por un transistor **`8050SS`** desde `GPIO 4` / `D3`, junto con resistencias disponibles de **`22kΩ` / `4.5kΩ`** (para adaptación de base/divisor de entrada) y diodos **`1N4007`** en la etapa de aislamiento de alimentación.
+
+### D. Procedimiento de Calibración en Casa con un Platito (~3 Pellets de Fondo)
+Antes de instalar el dosificador sobre la pecera, calibrar la cantidad exacta de alimento sobre una superficie limpia:
+1. **Preparación:** Cargar la tolva con los **pellets de fondo** y colocar un **platito seco** debajo de la boca de salida del servomotor o motor DC (con el cargador `220V` conectado).
+2. **Primer ensayo con el valor por defecto (`350 ms`):** Enviar **`/alimentar_forzar`** por Telegram o Monitor Serie (`115200 baudios`) para probar la caída sin esperar los `60 s` de cooldown y contar cuántos pellets cayeron en el platito.
+3. **Ajuste fino con `/calibrar_ms <50..2000>`:**
+   - Si cayeron **menos de 3 pellets** (o ninguno), subir el pulso, por ejemplo: `/calibrar_ms 450`.
+   - Si cayeron **más de 3 pellets**, bajar el pulso, por ejemplo: `/calibrar_ms 250`.
+4. **Repetición hasta lograr 3 pellets exactos:** Volver a enviar **`/alimentar_forzar`** (vaciando el platito entre intentos) y ajustar con `/calibrar_ms` en pasos de `25–50 ms` hasta que caigan **exactamente 3 pellets de fondo** de forma consistente.
+5. **Verificación final de telemetría:** Enviar **`/estado`** para confirmar que `FEED_MS=<ms>` muestra el tiempo calibrado final y `DOSIS=<N>` refleja los disparos realizados; a partir de ese momento usar siempre **`/alimentar`** para respetar la protección de cooldown de `60 s`.
 
 ---
 
