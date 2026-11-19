@@ -31,18 +31,33 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `i
 - **Transiciones horarias diarias (`MAINS_OK`, `POLICY_AUTO_RTC`):**
   - Al cruzar la hora de inicio (ej. `09:59` $\rightarrow$ `10:00`) solicita `LAMP_WHITE`; al cruzar la hora de fin (ej. `17:59` $\rightarrow$ `18:00`) solicita `LAMP_OFF`.
 
+### SLICE-03: Secuenciador Infrarrojo (`IR TX`) No Bloqueante y Clonador (`IR RX`) (Issue #3)
+Implementado en [`include/controller.h`](../../include/controller.h) mediante `requestLampTransition()`, `stepIrSequencer()`, `startIrClone()` y `applyCapturedIrCode()`:
+- **Secuencia no bloqueante de pulsos (`DEFAULT_IR_INTER_CMD_DELAY_MS = 250 ms`):**
+  - Al solicitar **`LAMP_WHITE`**:
+    1. `t = 0 ms`: emite `IR_CMD_ON` (`irCodes.codeOn`).
+    2. `t = +250 ms`: emite `IR_CMD_WHITE` (`irCodes.codeWhite`).
+    3. `t = +500 ms`: re-emite `IR_CMD_WHITE` por seguridad y actualiza `appliedLampMode = LAMP_WHITE`.
+  - Al solicitar **`LAMP_OFF`**:
+    1. `t = 0 ms`: emite `IR_CMD_OFF` (`irCodes.codeOff`).
+    2. `t = +250 ms`: re-emite `IR_CMD_OFF` por seguridad y actualiza `appliedLampMode = LAMP_OFF`.
+- **Clonador de Control Remoto Original (`IrCloneSlot`):**
+  - Permite capturar los 3 botones del control original de la pecera (`ON`, `BLANCO`, `OFF`) desde el receptor `KY-022` y almacenarlos en `irCodes` (`codeOn`, `codeWhite`, `codeOff`) para su persistencia en `EEPROM` / `NVS`.
+
 ---
 
-## 2. Tabla de Pines por Placa (`SLICE-01` + `SLICE-02`)
+## 2. Tabla de Pines por Placa (`SLICE-01` + `SLICE-02` + `SLICE-03`)
 
 | Señal / Función | ESP32-C3 SuperMini | ESP32 Clásico (NodeMCU-32S / DevKit) | Arduino Nano V3 | Notas Eléctricas |
 | :--- | :---: | :---: | :---: | :--- |
 | **`PIN_MAINS_SENSE`** (Detección 220V) | **`GPIO 3`** | **`GPIO 34`** *(solo entrada)* | **`D2`** *(INT0)* | Conectado al punto medio del divisor `10kΩ / 20kΩ` (`HIGH` ~`3.3V` = 220V OK, `LOW` `0V` = Corte) |
 | **`RTC DS3231` — `SDA`** (Bus I2C `0x68`) | **`GPIO 6`** | **`GPIO 21`** | **`A4`** | Línea de datos I2C hacia el módulo `RTC DS3231` (`ZS-042` con pila `CR2032`) |
 | **`RTC DS3231` — `SCL`** (Bus I2C `0x68`) | **`GPIO 7`** | **`GPIO 22`** | **`A5`** | Línea de reloj I2C hacia el módulo `RTC DS3231` |
+| **Emisor IR `KY-005` (`TX` vía `2N2222`)** | **`GPIO 4`** | **`GPIO 4`** | **`D3`** *(PWM)* | A base del transistor `2N2222` con `R = 1kΩ`; LED IR a `5V` con `R = 100Ω` en colector |
+| **Receptor IR `KY-022` (`RX` `38 kHz`)** | **`GPIO 5`** | **`GPIO 15`** | **`D4`** | Pin de datos (`DAT`/`S`) del receptor `VS1838B`; `VCC` a `3.3V` (ESP32) / `5V` (Nano) |
 | **Alimentación `RTC DS3231` (`VCC`)** | `3.3V` | `3.3V` | `5V` | Alimentación lógica compatible con los niveles I2C de cada placa |
 | **Alimentación principal `5V`** | Pin `5V` | Pin `5V` / `VIN` | Pin `5V` | Recibe `~4.7V–4.8V` desde los cátodos unidos de `D1` (USB 220V) y `D2` (Respaldo batería) |
-| **Masa común (`GND`)** | `GND` | `GND` | `GND` | Compartida entre cargador 5V, `TP4056`, `MT3608`, divisor resistivo, `RTC DS3231` y placa |
+| **Masa común (`GND`)** | `GND` | `GND` | `GND` | Compartida entre cargador 5V, `TP4056`, `MT3608`, divisor resistivo, `RTC`, etapa IR y placa |
 
 ---
 
@@ -84,7 +99,41 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `i
 
 ---
 
-## 4. Puesta en Marcha y Verificación
+## 4. Etapa Infrarroja (`KY-005` + `2N2222` y `KY-022`) y Clonado de Control Remoto
+
+### A. Conexionado del Emisor IR `KY-005` con Transistor `2N2222` (Amplificador de Alcance)
+Para triplicar el alcance hacia el receptor de la pecera y proteger el pin GPIO:
+1. Conectar el pin de salida IR (`GPIO 4` en ESP32-C3 / ESP32 o `D3` en Arduino Nano) a una **resistencia de base `R_B = 1kΩ`**, y el otro extremo a la **Base (`B`)** del transistor NPN **`2N2222`**.
+2. Conectar el **Emisor (`E`)** del `2N2222` directamente a **`GND`**.
+3. Conectar el terminal positivo (`+` / ánodo) del LED emisor `KY-005` (`940nm`) a **`5V`** a través de una **resistencia limitadora de colector `R_C = 100Ω`**.
+4. Conectar el terminal negativo (`-` / cátodo) del `KY-005` al **Colector (`C`)** del `2N2222`.
+
+```text
+[Pin IR TX: GPIO 4 / D3] ──► [R_B 1kΩ] ──► Base (2N2222)
+                                              │
+[Pin 5V] ──► [R_C 100Ω] ──► [Ánodo KY-005] ──► [Cátodo KY-005] ──► Colector (2N2222)
+                                                                       │
+                                                                   Emisor ──► GND
+```
+
+### B. Conexionado del Receptor IR `KY-022` (`VS1838B 38 kHz`)
+1. `VCC` del `KY-022` $\rightarrow$ **`3.3V`** (ESP32-C3 / ESP32) o **`5V`** (Arduino Nano).
+2. `GND` del `KY-022` $\rightarrow$ **`GND`**.
+3. `DAT` / `S` del `KY-022` $\rightarrow$ **`GPIO 5`** (ESP32-C3 SuperMini), **`GPIO 15`** (ESP32 Clásico) o **`D4`** (Arduino Nano).
+
+### C. Secuencia de Pulsos IR TX y Procedimiento de Clonado de los 3 Botones
+- **Secuencia automática no bloqueante (`250 ms` entre pulsos):**
+  - **Modo `LAMP_WHITE`:** emite `IR_CMD_ON` (`t = 0 ms`) $\rightarrow$ `IR_CMD_WHITE` (`t = +250 ms`) $\rightarrow$ `IR_CMD_WHITE` (`t = +500 ms`) para garantizar que la lámpara salga del modo multicolor y quede fija en luz blanca.
+  - **Modo `LAMP_OFF`:** emite doble pulso `IR_CMD_OFF` (`t = 0 ms` y `t = +250 ms`) para asegurar el apagado completo.
+- **Cómo clonar los 3 botones del control remoto original:**
+  1. **Botón `ON`:** Activar el slot `CLONE_WAIT_ON` mediante `startIrClone(state, CLONE_WAIT_ON)`, apuntar el control original de la pecera a `~10 cm` del receptor `KY-022` y presionar **`ON`**. Al recibirse un código válido (`!= 0`), `applyCapturedIrCode()` lo guarda en `irCodes.codeOn` y vuelve a `CLONE_NONE`.
+  2. **Botón `WHITE` (Luz Blanca):** Activar `CLONE_WAIT_WHITE` y presionar el botón de **luz blanca (`WHITE`)** en el control original; se almacena en `irCodes.codeWhite`.
+  3. **Botón `OFF`:** Activar `CLONE_WAIT_OFF` y presionar **`OFF`** en el control original; se almacena en `irCodes.codeOff`.
+  4. Una vez capturados los 3 códigos, quedan guardados en memoria no volátil (`EEPROM` en Nano / `NVS` en ESP32) para sobrevivir a cortes de energía.
+
+---
+
+## 5. Puesta en Marcha y Verificación
 1. Verificar con multímetro que sin cargador USB (`220V` desconectado) el pin `MAINS_SENSE` marque `0V` y la placa siga encendida desde la batería (`~4.3V–4.5V` tras `D2`).
-2. Abrir el monitor serie a **`115200 baudios`** para verificar el arranque del controlador y las transiciones de estado ante desconexión/reconexión del cargador USB.
+2. Abrir el monitor serie a **`115200 baudios`** para verificar el arranque del controlador, la hora del `RTC DS3231` y las transiciones IR/energía.
 
