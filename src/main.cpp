@@ -5,11 +5,13 @@
 #include "controller.h"
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(ARDUINO_ESP32C3_DEV)
+constexpr uint8_t PIN_FEEDER      = 1;  // ESP32-C3 SuperMini GPIO 1 (Servo/Motor Tolva)
 constexpr uint8_t PIN_MAINS_SENSE = 3;  // ESP32-C3 SuperMini GPIO 3
 constexpr uint8_t PIN_IR_TX       = 4;  // ESP32-C3 SuperMini GPIO 4 (KY-005 + 2N2222)
 constexpr uint8_t PIN_IR_RX       = 5;  // ESP32-C3 SuperMini GPIO 5 (KY-022 VS1838B)
 constexpr uint8_t PIN_ACTUATOR    = 8;  // LED onboard ESP32-C3 SuperMini
 #elif defined(ESP32)
+constexpr uint8_t PIN_FEEDER      = 25; // ESP32 clásico GPIO 25 (Servo/Motor Tolva)
 constexpr uint8_t PIN_MAINS_SENSE = 34; // ESP32 clásico GPIO 34 (input-only)
 constexpr uint8_t PIN_IR_TX       = 4;  // ESP32 clásico GPIO 4 (KY-005 + 2N2222)
 constexpr uint8_t PIN_IR_RX       = 15; // ESP32 clásico GPIO 15 (KY-022 VS1838B)
@@ -18,6 +20,7 @@ constexpr uint8_t PIN_ACTUATOR    = 2;  // LED onboard ESP32 clásico
 constexpr uint8_t PIN_MAINS_SENSE = 2;  // Arduino Nano D2
 constexpr uint8_t PIN_IR_TX       = 3;  // Arduino Nano D3 (KY-005 + 2N2222)
 constexpr uint8_t PIN_IR_RX       = 4;  // Arduino Nano D4 (KY-022 VS1838B)
+constexpr uint8_t PIN_FEEDER      = 5;  // Arduino Nano D5 (Servo/Motor Tolva)
 constexpr uint8_t PIN_ACTUATOR    = 13; // LED onboard Arduino Nano D13
 #endif
 
@@ -149,9 +152,11 @@ void setup() {
     pinMode(PIN_IR_TX, OUTPUT);
     digitalWrite(PIN_IR_TX, LOW);
     pinMode(PIN_IR_RX, INPUT);
+    pinMode(PIN_FEEDER, OUTPUT);
+    digitalWrite(PIN_FEEDER, LOW);
     pinMode(PIN_ACTUATOR, OUTPUT);
     AppLogic::initState(gState);
-    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-04 Inicializado"));
+    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-05 Inicializado"));
 }
 
 void loop() {
@@ -172,6 +177,9 @@ void loop() {
         Serial.print(F(" Code=0x"));
         Serial.println(rawIrCode, HEX);
     }
+
+    const bool feederActive = AppLogic::stepFeeder(gState, currentRtcMin, nowMs);
+    digitalWrite(PIN_FEEDER, feederActive ? HIGH : LOW);
 
     stepOfflineQueueDispatch(nowMs);
     digitalWrite(PIN_ACTUATOR, gState.onBatteryBackup ? HIGH : LOW);

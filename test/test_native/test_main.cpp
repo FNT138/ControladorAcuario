@@ -333,6 +333,64 @@ void test_slice04_remote_commands_parser(void) {
     TEST_ASSERT_GREATER_THAN_UINT32(0, static_cast<uint32_t>(strlen(reply)));
 }
 
+void test_slice05_feeder_pulse_duration_bounds(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+
+    // Default debe ser 350ms y códigos de control 24 teclas pre-cargados
+    TEST_ASSERT_EQUAL_UINT16(AppLogic::DEFAULT_FEEDER_PULSE_MS, st.feederPulseMs);
+    TEST_ASSERT_EQUAL_HEX32(0x00F7C03FUL, st.irCodes.codeOn);
+    TEST_ASSERT_EQUAL_HEX32(0x00F7E01FUL, st.irCodes.codeWhite);
+    TEST_ASSERT_EQUAL_HEX32(0x00F740BFUL, st.irCodes.codeOff);
+
+    // Rechaza valores peligrosos (< 50ms o > 2000ms)
+    TEST_ASSERT_FALSE(AppLogic::setFeederPulseDuration(st, 20));
+    TEST_ASSERT_FALSE(AppLogic::setFeederPulseDuration(st, 2500));
+    TEST_ASSERT_EQUAL_UINT16(AppLogic::DEFAULT_FEEDER_PULSE_MS, st.feederPulseMs);
+
+    // Acepta valor calibrado válido (ej. 420ms para ~3 pellets)
+    TEST_ASSERT_TRUE(AppLogic::setFeederPulseDuration(st, 420));
+    TEST_ASSERT_EQUAL_UINT16(420, st.feederPulseMs);
+}
+
+void test_slice05_feeder_dispense_and_cooldown_and_battery_lock(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    AppLogic::setFeederPulseDuration(st, 350);
+
+    // 1. Si está en corte de luz (onBatteryBackup = true), rechaza accionar el motor para cuidar la celda UR18650ZT
+    st.onBatteryBackup = true;
+    TEST_ASSERT_FALSE(AppLogic::triggerEmergencyFeed(st, 750, 1000, false));
+    TEST_ASSERT_FALSE(st.feederOutputActive);
+    st.onBatteryBackup = false;
+
+    // 2. Con 220V OK, dispara una dosis en t=1000ms
+    TEST_ASSERT_TRUE(AppLogic::triggerEmergencyFeed(st, 750, 1000, false));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_DISPENSING, st.feederStatus);
+    TEST_ASSERT_TRUE(AppLogic::stepFeeder(st, 750, 1100)); // Sigue activo a los 100ms (< 350ms)
+    TEST_ASSERT_TRUE(st.feederOutputActive);
+
+    // 3. Al cumplirse los 350ms (t=1350ms), corta el motor, entra en COOLDOWN, suma 1 dosis y encola EVT_FEED_DISPENSED con foto
+    TEST_ASSERT_FALSE(AppLogic::stepFeeder(st, 750, 1350));
+    TEST_ASSERT_FALSE(st.feederOutputActive);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_COOLDOWN, st.feederStatus);
+    TEST_ASSERT_EQUAL_UINT8(1, st.feedDispensedCount);
+    TEST_ASSERT_TRUE(st.localCameraTriggerPending);
+    TEST_ASSERT_EQUAL_UINT8(1, st.queueCount);
+
+    AppLogic::OfflineEvent ev;
+    TEST_ASSERT_TRUE(AppLogic::popOfflineEvent(st, ev));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::EVT_FEED_DISPENSED, ev.eventType);
+    TEST_ASSERT_TRUE(ev.photoRequested);
+
+    // 4. Si intenta disparar otra vez durante el cooldown (t=5000ms < 1350+60000ms) con force=false, lo bloquea
+    TEST_ASSERT_FALSE(AppLogic::triggerEmergencyFeed(st, 750, 5000, false));
+
+    // 5. Con forceIgnoreCooldown=true (calibración en casa), sí permite disparar durante el cooldown
+    TEST_ASSERT_TRUE(AppLogic::triggerEmergencyFeed(st, 750, 6000, true));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_DISPENSING, st.feederStatus);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
@@ -348,5 +406,7 @@ int main(int argc, char **argv) {
     RUN_TEST(test_slice04_offline_queue_store_and_forward_blackout_flow);
     RUN_TEST(test_slice04_ring_buffer_overflow_overwrites_oldest);
     RUN_TEST(test_slice04_remote_commands_parser);
+    RUN_TEST(test_slice05_feeder_pulse_duration_bounds);
+    RUN_TEST(test_slice05_feeder_dispense_and_cooldown_and_battery_lock);
     return UNITY_END();
 }

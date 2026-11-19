@@ -92,9 +92,10 @@ void initState(SystemState& state) {
     state.targetLampMode = LAMP_MODE_UNKNOWN;
     state.appliedLampMode = LAMP_MODE_UNKNOWN;
 
-    state.irCodes.codeOn = 0x00FF02FDUL;
-    state.irCodes.codeWhite = 0x00FF22DDUL;
-    state.irCodes.codeOff = 0x00FF827DUL;
+    // Códigos NEC universales del control IR de 24 teclas por defecto
+    state.irCodes.codeOn = 0x00F7C03FUL;
+    state.irCodes.codeWhite = 0x00F7E01FUL;
+    state.irCodes.codeOff = 0x00F740BFUL;
     state.cloneSlot = CLONE_NONE;
     state.irSeqStep = 0;
     state.irLastStepMs = 0;
@@ -114,6 +115,13 @@ void initState(SystemState& state) {
     state.queueOverwrites = 0;
     state.internetAvailable = false;
     state.localCameraTriggerPending = false;
+
+    state.feederStatus = FEEDER_IDLE;
+    state.feederOutputActive = false;
+    state.feederPulseMs = DEFAULT_FEEDER_PULSE_MS;
+    state.feederStartMs = 0;
+    state.feederCooldownMs = DEFAULT_FEEDER_COOLDOWN_MS;
+    state.feedDispensedCount = 0;
 }
 
 bool evaluateThreshold(SystemState& state, uint16_t sensorReading, uint16_t threshold, uint32_t currentMs, uint32_t intervalMs) {
@@ -474,6 +482,76 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     copyText(replyBuf, replyBufSize, "ERR: Comando desconocido");
+    return false;
+}
+
+bool setFeederPulseDuration(SystemState& state, uint16_t pulseMs) {
+    if (pulseMs < MIN_FEEDER_PULSE_MS || pulseMs > MAX_FEEDER_PULSE_MS) {
+        return false;
+    }
+    state.feederPulseMs = pulseMs;
+    return true;
+}
+
+bool triggerEmergencyFeed(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs, bool forceIgnoreCooldown) {
+    state.currentRtcMin = currentRtcMin % 1440U;
+
+    if (state.onBatteryBackup || state.mainsStatus == MAINS_LOST) {
+        state.feederOutputActive = false;
+        return false;
+    }
+
+    if (state.feederStatus == FEEDER_DISPENSING) {
+        return false;
+    }
+
+    if (state.feederStatus == FEEDER_COOLDOWN) {
+        if ((currentMs - state.feederStartMs) >= state.feederCooldownMs) {
+            state.feederStatus = FEEDER_IDLE;
+        } else if (!forceIgnoreCooldown) {
+            return false;
+        }
+    }
+
+    state.feederStatus = FEEDER_DISPENSING;
+    state.feederOutputActive = true;
+    state.feederStartMs = currentMs;
+    return true;
+}
+
+bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs) {
+    state.currentRtcMin = currentRtcMin % 1440U;
+
+    if (state.onBatteryBackup || state.mainsStatus == MAINS_LOST) {
+        state.feederOutputActive = false;
+        state.feederStatus = FEEDER_IDLE;
+        return false;
+    }
+
+    if (state.feederStatus == FEEDER_DISPENSING) {
+        if ((currentMs - state.feederStartMs) < state.feederPulseMs) {
+            state.feederOutputActive = true;
+            return true;
+        }
+        state.feederOutputActive = false;
+        state.feederStatus = FEEDER_COOLDOWN;
+        state.feederStartMs = currentMs;
+        if (state.feedDispensedCount < 255U) {
+            ++state.feedDispensedCount;
+        }
+        pushOfflineEvent(state, EVT_FEED_DISPENSED, state.currentRtcMin, state.appliedLampMode, true);
+        return false;
+    }
+
+    if (state.feederStatus == FEEDER_COOLDOWN) {
+        state.feederOutputActive = false;
+        if ((currentMs - state.feederStartMs) >= state.feederCooldownMs) {
+            state.feederStatus = FEEDER_IDLE;
+        }
+        return false;
+    }
+
+    state.feederOutputActive = false;
     return false;
 }
 

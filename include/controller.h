@@ -11,6 +11,12 @@ static const uint32_t DEFAULT_LAMP_BOOT_SETTLE_MS   = 3000;
 static const uint32_t DEFAULT_IR_INTER_CMD_DELAY_MS = 250;
 static const uint8_t  OFFLINE_QUEUE_CAPACITY        = 16;
 
+// Constantes del alimentador de emergencia (SLICE-05)
+static const uint16_t MIN_FEEDER_PULSE_MS           = 50;
+static const uint16_t MAX_FEEDER_PULSE_MS           = 2000;
+static const uint16_t DEFAULT_FEEDER_PULSE_MS       = 350;
+static const uint32_t DEFAULT_FEEDER_COOLDOWN_MS    = 60000;
+
 enum MainsStatus : uint8_t {
     MAINS_OK = 0,
     MAINS_DEBOUNCE_LOST,
@@ -52,7 +58,14 @@ enum EventType : uint8_t {
     EVT_LAMP_OFF_APPLIED,
     EVT_SCHEDULE_ON,
     EVT_SCHEDULE_OFF,
-    EVT_PHOTO_REQUESTED
+    EVT_PHOTO_REQUESTED,
+    EVT_FEED_DISPENSED
+};
+
+enum FeederStatus : uint8_t {
+    FEEDER_IDLE = 0,
+    FEEDER_DISPENSING,
+    FEEDER_COOLDOWN
 };
 
 struct IrCodeSet {
@@ -109,6 +122,14 @@ struct SystemState {
     uint8_t queueOverwrites;
     bool internetAvailable;
     bool localCameraTriggerPending;
+
+    // SLICE-05: Dosificador de Emergencia por Tolva Calibrada en ms (~3 pellets)
+    FeederStatus feederStatus;
+    bool feederOutputActive;
+    uint16_t feederPulseMs;
+    uint32_t feederStartMs;
+    uint32_t feederCooldownMs;
+    uint8_t feedDispensedCount;
 };
 
 // Base
@@ -134,5 +155,10 @@ bool pushOfflineEvent(SystemState& state, EventType type, uint16_t timestampMin,
 bool popOfflineEvent(SystemState& state, OfflineEvent& outEvent);
 bool dispatchNextQueuedEvent(SystemState& state, bool internetReady, OfflineEvent& outDispatched);
 bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentRtcMin, uint32_t currentMs, char* replyBuf, size_t replyBufSize);
+
+// SLICE-05: Dosificador de Emergencia por Tolva Calibrada en Milisegundos (~3 pellets)
+bool setFeederPulseDuration(SystemState& state, uint16_t pulseMs);
+bool triggerEmergencyFeed(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs, bool forceIgnoreCooldown);
+bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs);
 
 } // namespace AppLogic
