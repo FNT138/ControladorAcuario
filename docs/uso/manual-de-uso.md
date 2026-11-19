@@ -19,15 +19,30 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `A
   - Al retornar los `220V`, mantiene el estado `MAINS_RESTORING_WAIT` durante `3000 ms` sin bloquear el `loop()`, dando tiempo a que el receptor IR interno de la lámpara LED de la pecera inicialice.
   - Cumplidos los `3000 ms`, pasa a `MAINS_OK` y activa `postRestoreActionPending = true` para que los módulos de control horario/IR corrijan el estado de la lámpara.
 
+### SLICE-02: Fotoperíodo Diario (`RTC DS3231`) y Decisión Automática Post-Corte (Issue #2)
+Implementado en [`include/controller.h`](../../include/controller.h) mediante `isMinuteInWindow()`, `setPhotoperiodSchedule()` y `evaluatePhotoperiod()`:
+- **Ventana horaria configurable (`0..1439` min desde medianoche):**
+  - Horario por defecto: **`10:00` (`600`) a `18:00` (`1080`)**.
+  - Soporta tanto ventanas **diurnas** (`startMin < endMin`, ej. `10:00–18:00`) como ventanas **nocturnas** que cruzan la medianoche (`startMin > endMin`, ej. `22:00–06:00`).
+- **Resolución automática post-corte (`postRestoreActionPending == true`):**
+  - Cuando vuelve la electricidad (`220V`) y finaliza el retardo de `3000 ms`, consulta la hora actual del `RTC DS3231` sin depender de Wi-Fi:
+    - **Retorno diurno (dentro del fotoperíodo, ej. `14:30`):** decide `targetLampMode = LAMP_WHITE` para sacar la lámpara del modo multicolor automático tras el corte y fijarla en luz blanca.
+    - **Retorno nocturno (fuera del fotoperíodo, ej. `03:00`):** decide `targetLampMode = LAMP_OFF` para apagar la lámpara inmediatamente.
+- **Transiciones horarias diarias (`MAINS_OK`, `POLICY_AUTO_RTC`):**
+  - Al cruzar la hora de inicio (ej. `09:59` $\rightarrow$ `10:00`) solicita `LAMP_WHITE`; al cruzar la hora de fin (ej. `17:59` $\rightarrow$ `18:00`) solicita `LAMP_OFF`.
+
 ---
 
-## 2. Tabla de Pines por Placa (`SLICE-01`)
+## 2. Tabla de Pines por Placa (`SLICE-01` + `SLICE-02`)
 
 | Señal / Función | ESP32-C3 SuperMini | ESP32 Clásico (NodeMCU-32S / DevKit) | Arduino Nano V3 | Notas Eléctricas |
 | :--- | :---: | :---: | :---: | :--- |
 | **`PIN_MAINS_SENSE`** (Detección 220V) | **`GPIO 3`** | **`GPIO 34`** *(solo entrada)* | **`D2`** *(INT0)* | Conectado al punto medio del divisor `10kΩ / 20kΩ` (`HIGH` ~`3.3V` = 220V OK, `LOW` `0V` = Corte) |
+| **`RTC DS3231` — `SDA`** (Bus I2C `0x68`) | **`GPIO 6`** | **`GPIO 21`** | **`A4`** | Línea de datos I2C hacia el módulo `RTC DS3231` (`ZS-042` con pila `CR2032`) |
+| **`RTC DS3231` — `SCL`** (Bus I2C `0x68`) | **`GPIO 7`** | **`GPIO 22`** | **`A5`** | Línea de reloj I2C hacia el módulo `RTC DS3231` |
+| **Alimentación `RTC DS3231` (`VCC`)** | `3.3V` | `3.3V` | `5V` | Alimentación lógica compatible con los niveles I2C de cada placa |
 | **Alimentación principal `5V`** | Pin `5V` | Pin `5V` / `VIN` | Pin `5V` | Recibe `~4.7V–4.8V` desde los cátodos unidos de `D1` (USB 220V) y `D2` (Respaldo batería) |
-| **Masa común (`GND`)** | `GND` | `GND` | `GND` | Compartida entre cargador 5V, `TP4056`, `MT3608`, divisor resistivo y microcontrolador |
+| **Masa común (`GND`)** | `GND` | `GND` | `GND` | Compartida entre cargador 5V, `TP4056`, `MT3608`, divisor resistivo, `RTC DS3231` y placa |
 
 ---
 
