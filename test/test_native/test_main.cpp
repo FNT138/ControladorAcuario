@@ -139,6 +139,89 @@ void test_slice02_daily_schedule_transitions(void) {
     TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_OFF, st.targetLampMode);
 }
 
+void test_slice03_ir_sequencer_lamp_white_3_steps(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    st.irCodes.codeOn    = 0x00FF02FDUL;
+    st.irCodes.codeWhite = 0x00FF22DDUL;
+    st.irCodes.codeOff   = 0x00FF827DUL;
+
+    uint32_t rawCode = 0;
+    AppLogic::requestLampTransition(st, AppLogic::LAMP_WHITE, 1000);
+
+    // Paso 1 en t=1000ms: debe emitir IR_CMD_ON
+    AppLogic::IrCommandType cmd = AppLogic::stepIrSequencer(st, 1000, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_ON, cmd);
+    TEST_ASSERT_EQUAL_HEX32(0x00FF02FDUL, rawCode);
+
+    // Antes de 250ms (t=1100ms): no debe emitir nada
+    cmd = AppLogic::stepIrSequencer(st, 1100, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_NONE, cmd);
+
+    // Paso 2 en t=1250ms: debe emitir IR_CMD_WHITE
+    cmd = AppLogic::stepIrSequencer(st, 1250, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_WHITE, cmd);
+    TEST_ASSERT_EQUAL_HEX32(0x00FF22DDUL, rawCode);
+
+    // Paso 3 en t=1500ms: re-emite IR_CMD_WHITE de refuerzo y marca appliedLampMode = LAMP_WHITE
+    cmd = AppLogic::stepIrSequencer(st, 1500, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_WHITE, cmd);
+    TEST_ASSERT_EQUAL_HEX32(0x00FF22DDUL, rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_WHITE, st.appliedLampMode);
+
+    // En t=1800ms ya finalizó la secuencia
+    cmd = AppLogic::stepIrSequencer(st, 1800, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_NONE, cmd);
+}
+
+void test_slice03_ir_sequencer_lamp_off_2_steps(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    st.irCodes.codeOff = 0x00FF827DUL;
+
+    uint32_t rawCode = 0;
+    AppLogic::requestLampTransition(st, AppLogic::LAMP_OFF, 2000);
+
+    // Paso 1 en t=2000ms: emite IR_CMD_OFF
+    AppLogic::IrCommandType cmd = AppLogic::stepIrSequencer(st, 2000, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_OFF, cmd);
+    TEST_ASSERT_EQUAL_HEX32(0x00FF827DUL, rawCode);
+
+    // En t=2100ms (< 2250ms): espera no bloqueante
+    cmd = AppLogic::stepIrSequencer(st, 2100, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_NONE, cmd);
+
+    // Paso 2 en t=2250ms: emite segundo IR_CMD_OFF de refuerzo y marca appliedLampMode = LAMP_OFF
+    cmd = AppLogic::stepIrSequencer(st, 2250, &rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::IR_CMD_OFF, cmd);
+    TEST_ASSERT_EQUAL_HEX32(0x00FF827DUL, rawCode);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::LAMP_OFF, st.appliedLampMode);
+}
+
+void test_slice03_ir_clone_3_slots(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+
+    // Si no está en modo clonado o el código es 0, rechaza
+    TEST_ASSERT_FALSE(AppLogic::applyCapturedIrCode(st, 0x12345678UL));
+
+    // Clonar botón ON
+    AppLogic::startIrClone(st, AppLogic::CLONE_WAIT_ON);
+    TEST_ASSERT_TRUE(AppLogic::applyCapturedIrCode(st, 0x11111111UL));
+    TEST_ASSERT_EQUAL_HEX32(0x11111111UL, st.irCodes.codeOn);
+
+    // Clonar botón WHITE
+    AppLogic::startIrClone(st, AppLogic::CLONE_WAIT_WHITE);
+    TEST_ASSERT_TRUE(AppLogic::applyCapturedIrCode(st, 0x22222222UL));
+    TEST_ASSERT_EQUAL_HEX32(0x22222222UL, st.irCodes.codeWhite);
+
+    // Clonar botón OFF
+    AppLogic::startIrClone(st, AppLogic::CLONE_WAIT_OFF);
+    TEST_ASSERT_TRUE(AppLogic::applyCapturedIrCode(st, 0x33333333UL));
+    TEST_ASSERT_EQUAL_HEX32(0x33333333UL, st.irCodes.codeOff);
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::CLONE_NONE, st.cloneSlot);
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
@@ -148,5 +231,8 @@ int main(int argc, char **argv) {
     RUN_TEST(test_slice02_photoperiod_window_day_and_overnight);
     RUN_TEST(test_slice02_post_restore_daytime_and_nighttime_decisions);
     RUN_TEST(test_slice02_daily_schedule_transitions);
+    RUN_TEST(test_slice03_ir_sequencer_lamp_white_3_steps);
+    RUN_TEST(test_slice03_ir_sequencer_lamp_off_2_steps);
+    RUN_TEST(test_slice03_ir_clone_3_slots);
     return UNITY_END();
 }

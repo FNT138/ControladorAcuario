@@ -5,12 +5,18 @@
 
 #if defined(CONFIG_IDF_TARGET_ESP32C3) || defined(ARDUINO_ESP32C3_DEV)
 constexpr uint8_t PIN_MAINS_SENSE = 3;  // ESP32-C3 SuperMini GPIO 3
+constexpr uint8_t PIN_IR_TX       = 4;  // ESP32-C3 SuperMini GPIO 4 (KY-005 + 2N2222)
+constexpr uint8_t PIN_IR_RX       = 5;  // ESP32-C3 SuperMini GPIO 5 (KY-022 VS1838B)
 constexpr uint8_t PIN_ACTUATOR    = 8;  // LED onboard ESP32-C3 SuperMini
 #elif defined(ESP32)
 constexpr uint8_t PIN_MAINS_SENSE = 34; // ESP32 clásico GPIO 34 (input-only)
+constexpr uint8_t PIN_IR_TX       = 4;  // ESP32 clásico GPIO 4 (KY-005 + 2N2222)
+constexpr uint8_t PIN_IR_RX       = 15; // ESP32 clásico GPIO 15 (KY-022 VS1838B)
 constexpr uint8_t PIN_ACTUATOR    = 2;  // LED onboard ESP32 clásico
 #else
 constexpr uint8_t PIN_MAINS_SENSE = 2;  // Arduino Nano D2
+constexpr uint8_t PIN_IR_TX       = 3;  // Arduino Nano D3 (KY-005 + 2N2222)
+constexpr uint8_t PIN_IR_RX       = 4;  // Arduino Nano D4 (KY-022 VS1838B)
 constexpr uint8_t PIN_ACTUATOR    = 13; // LED onboard Arduino Nano D13
 #endif
 
@@ -32,7 +38,7 @@ static uint16_t pollRtcMinutes(uint32_t nowMs) {
     gLastRtcPollMs = nowMs;
 
     Wire.beginTransmission(DS3231_I2C_ADDR);
-    Wire.write(0x01); // Registro de minutos (0x01) y horas (0x02)
+    Wire.write(0x01);
     if (Wire.endTransmission() == 0 && Wire.requestFrom(DS3231_I2C_ADDR, static_cast<uint8_t>(2)) == 2) {
         const uint8_t minutes = bcdToDec(Wire.read() & 0x7FU);
         const uint8_t hours   = bcdToDec(Wire.read() & 0x3FU);
@@ -43,13 +49,46 @@ static uint16_t pollRtcMinutes(uint32_t nowMs) {
     return gCachedRtcMin;
 }
 
+static void emitIrCarrierMark(uint16_t durationUs) {
+    const uint16_t cycles = durationUs / 26U; // ~38kHz (periodo ~26.3us)
+    for (uint16_t i = 0; i < cycles; ++i) {
+        digitalWrite(PIN_IR_TX, HIGH);
+        delayMicroseconds(9);
+        digitalWrite(PIN_IR_TX, LOW);
+        delayMicroseconds(17);
+    }
+}
+
+static void emitIrSpace(uint16_t durationUs) {
+    digitalWrite(PIN_IR_TX, LOW);
+    delayMicroseconds(durationUs);
+}
+
+static void transmitNecIrFrame(uint32_t code) {
+    emitIrCarrierMark(9000);
+    emitIrSpace(4500);
+    for (int8_t bit = 31; bit >= 0; --bit) {
+        emitIrCarrierMark(560);
+        if ((code >> bit) & 1UL) {
+            emitIrSpace(1690);
+        } else {
+            emitIrSpace(560);
+        }
+    }
+    emitIrCarrierMark(560);
+    digitalWrite(PIN_IR_TX, LOW);
+}
+
 void setup() {
     Serial.begin(115200);
     Wire.begin();
     pinMode(PIN_MAINS_SENSE, INPUT);
+    pinMode(PIN_IR_TX, OUTPUT);
+    digitalWrite(PIN_IR_TX, LOW);
+    pinMode(PIN_IR_RX, INPUT);
     pinMode(PIN_ACTUATOR, OUTPUT);
     AppLogic::initState(gState);
-    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-02 Inicializado"));
+    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-03 Inicializado"));
 }
 
 void loop() {
@@ -63,6 +102,16 @@ void loop() {
     AppLogic::updateMainsPower(gState, mainsHigh, currentRtcMin, nowMs);
     AppLogic::evaluatePhotoperiod(gState, currentRtcMin);
 
+    uint32_t rawIrCode = 0;
+    const AppLogic::IrCommandType irCmd = AppLogic::stepIrSequencer(gState, nowMs, &rawIrCode);
+    if (irCmd != AppLogic::IR_CMD_NONE) {
+        transmitNecIrFrame(rawIrCode);
+        Serial.print(F("[IR-TX] Comando emitido: "));
+        Serial.print(static_cast<uint8_t>(irCmd));
+        Serial.print(F(" Code=0x"));
+        Serial.println(rawIrCode, HEX);
+    }
+
     digitalWrite(PIN_ACTUATOR, gState.onBatteryBackup ? HIGH : LOW);
 
     if (gState.mainsStatus != prevMains) {
@@ -75,9 +124,9 @@ void loop() {
 
     if (gState.targetLampMode != prevTarget) {
         if (gState.targetLampMode == AppLogic::LAMP_WHITE) {
-            Serial.println(F("[FOTOPERIODO] Objetivo lampara -> LUZ BLANCA"));
+            Serial.println(F("[FOTOPERIODO] Objetivo lampara -> LUZ BLANCA (Secuencia IR iniciada)"));
         } else if (gState.targetLampMode == AppLogic::LAMP_OFF) {
-            Serial.println(F("[FOTOPERIODO] Objetivo lampara -> APAGADA"));
+            Serial.println(F("[FOTOPERIODO] Objetivo lampara -> APAGADA (Secuencia IR iniciada)"));
         }
     }
 }
