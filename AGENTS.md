@@ -17,6 +17,10 @@ Vos (el agente principal en el chat) actuás como **Orquestador Liviano**.
    - `implementador`: `inherit` o `flash` (codificación C/C++ enfocada en un único Vertical Slice por vez).
    - `tester`: `flash` (solo corre la suite predefinida `pio test` / `pio run` y parsea resultados).
    - `documentador`: `flash` (actualización incremental de manual de uso y conexiones del slice).
+5. **Límite Estricto de Alcance — UN (1) Solo Vertical Slice por Confirmación (REGLA OBLIGATORIA):**
+   - **PROHIBIDO sobrepasar el límite de la tarea o slice pedido por el usuario.**
+   - **PROHIBIDO encadenar múltiples Vertical Slices automáticamente:** Si el usuario confirma implementar el `SLICE-01`, bajo ninguna circunstancia el Orquestador puede iniciar el `SLICE-02` o siguientes por iniciativa propia.
+   - **Checkpoint Humano Obligatorio:** Al completarse un único slice (`implementador` $\rightarrow$ `tester` $\rightarrow$ `documentador`), el Orquestador **DEBE DETENERSE**, entregar el reporte de cierre de ese slice y **esperar la orden explícita del usuario** antes de pasar al próximo slice.
 
 ---
 
@@ -79,6 +83,9 @@ Todo commit e issue del proyecto sigue el formato:
        │            └─► Si PASA: habilita el paso 6.
        ▼
 6. DOCUMENTADOR ──► Documenta la funcionalidad y conexiones del `SLICE-XX` en `docs/uso/` y `README.md` (`docs(<scope>): ...`)
+       │
+       ▼
+7. STOP / CHECKPOINT HUMANO (OBLIGATORIO) ──► El Orquestador se detiene y pide confirmación explícita al usuario antes de iniciar el siguiente `SLICE-XX+1`.
 ```
 
 ---
