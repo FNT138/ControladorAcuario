@@ -391,6 +391,46 @@ void test_slice05_feeder_dispense_and_cooldown_and_battery_lock(void) {
     TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_DISPENSING, st.feederStatus);
 }
 
+void test_slice06_feeder_remote_commands(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    char reply[96];
+
+    // 1. /calibrar_ms 420 -> actualiza feederPulseMs a 420
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/calibrar_ms 420", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT16(420, st.feederPulseMs);
+
+    // 2. /calibrar_ms 5000 -> rechaza por exceder tope de seguridad (2000ms)
+    TEST_ASSERT_FALSE(AppLogic::processRemoteCommand(st, "/calibrar_ms 5000", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT16(420, st.feederPulseMs);
+
+    // 3. /alimentar en corte de luz (onBatteryBackup = true) -> rechaza para cuidar la celda UR18650ZT
+    st.onBatteryBackup = true;
+    TEST_ASSERT_FALSE(AppLogic::processRemoteCommand(st, "/alimentar", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_FALSE(st.feederOutputActive);
+    st.onBatteryBackup = false;
+
+    // 4. /alimentar con 220V OK -> inicia pulso de 420ms
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/alimentar", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_DISPENSING, st.feederStatus);
+    TEST_ASSERT_TRUE(st.feederOutputActive);
+
+    // Completa el pulso en t=1420ms -> pasa a COOLDOWN y suma 1 dosis
+    TEST_ASSERT_FALSE(AppLogic::stepFeeder(st, 750, 1420));
+    TEST_ASSERT_EQUAL_UINT8(1, st.feedDispensedCount);
+
+    // 5. Segundo /alimentar inmediato durante cooldown (t=2000ms) -> bloqueado por seguridad
+    TEST_ASSERT_FALSE(AppLogic::processRemoteCommand(st, "/alimentar", 750, 2000, reply, sizeof(reply)));
+
+    // 6. /alimentar_forzar durante cooldown -> permite disparar para calibración en casa
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/alimentar_forzar", 750, 2500, reply, sizeof(reply)));
+    TEST_ASSERT_EQUAL_UINT8(AppLogic::FEEDER_DISPENSING, st.feederStatus);
+
+    // 7. /estado -> reporta DOSIS= y FEED_MS=
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/estado", 750, 3000, reply, sizeof(reply)));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "DOSIS="));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
@@ -408,5 +448,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_slice04_remote_commands_parser);
     RUN_TEST(test_slice05_feeder_pulse_duration_bounds);
     RUN_TEST(test_slice05_feeder_dispense_and_cooldown_and_battery_lock);
+    RUN_TEST(test_slice06_feeder_remote_commands);
     return UNITY_END();
 }

@@ -69,6 +69,31 @@ bool parseHhMmToken(const char* s, uint16_t& outMinutes) {
     return true;
 }
 
+bool parseUint16Token(const char* s, uint16_t& outValue) {
+    while (*s == ' ') {
+        ++s;
+    }
+    if (!isDigitChar(*s)) {
+        return false;
+    }
+    uint32_t acc = 0;
+    while (isDigitChar(*s)) {
+        acc = acc * 10UL + static_cast<uint32_t>(*s - '0');
+        if (acc > 65535UL) {
+            return false;
+        }
+        ++s;
+    }
+    while (*s == ' ') {
+        ++s;
+    }
+    if (*s != '\0') {
+        return false;
+    }
+    outValue = static_cast<uint16_t>(acc);
+    return true;
+}
+
 } // namespace
 
 void initState(SystemState& state) {
@@ -428,6 +453,34 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
         return true;
     }
 
+    if (strncmp(cmd, "/calibrar_ms ", 13) == 0) {
+        uint16_t pulseMs = 0;
+        if (!parseUint16Token(cmd + 13, pulseMs) || !setFeederPulseDuration(state, pulseMs)) {
+            copyText(replyBuf, replyBufSize, "ERR: Rango permitido 50..2000 ms");
+            return false;
+        }
+        copyText(replyBuf, replyBufSize, "OK: Pulso alimentador calibrado");
+        return true;
+    }
+
+    if (strcmp(cmd, "/alimentar") == 0) {
+        if (!triggerEmergencyFeed(state, state.currentRtcMin, currentMs, false)) {
+            copyText(replyBuf, replyBufSize, "ERR: Alimentador bloqueado (bateria/cooldown)");
+            return false;
+        }
+        copyText(replyBuf, replyBufSize, "OK: Alimentando (~3 pellets)");
+        return true;
+    }
+
+    if (strcmp(cmd, "/alimentar_forzar") == 0) {
+        if (!triggerEmergencyFeed(state, state.currentRtcMin, currentMs, true)) {
+            copyText(replyBuf, replyBufSize, "ERR: Alimentador bloqueado en bateria");
+            return false;
+        }
+        copyText(replyBuf, replyBufSize, "OK: Alimentacion forzada (~3 pellets)");
+        return true;
+    }
+
     if (strcmp(cmd, "/luz_blanca") == 0) {
         state.controlPolicy = POLICY_MANUAL_OVERRIDE;
         requestLampTransition(state, LAMP_WHITE, currentMs);
@@ -470,6 +523,10 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
         appendText(replyBuf, replyBufSize, (state.targetLampMode == LAMP_WHITE) ? "BLANCA" : "OFF");
         appendText(replyBuf, replyBufSize, " COLA:");
         appendUint(replyBuf, replyBufSize, state.queueCount);
+        appendText(replyBuf, replyBufSize, " FEED_MS=");
+        appendUint(replyBuf, replyBufSize, state.feederPulseMs);
+        appendText(replyBuf, replyBufSize, " DOSIS=");
+        appendUint(replyBuf, replyBufSize, state.feedDispensedCount);
         return true;
     }
 

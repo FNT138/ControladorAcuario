@@ -28,7 +28,7 @@ constexpr uint8_t DS3231_I2C_ADDR          = 0x68;
 constexpr uint32_t RTC_POLL_PERIOD_MS      = 1000;
 constexpr uint32_t TELEMETRY_DISPATCH_MS   = 500;
 constexpr size_t SERIAL_CMD_BUF_SIZE       = 48;
-constexpr size_t SERIAL_REPLY_BUF_SIZE     = 80;
+constexpr size_t SERIAL_REPLY_BUF_SIZE     = 96;
 
 AppLogic::SystemState gState;
 uint32_t gLastRtcPollMs      = 0;
@@ -156,7 +156,7 @@ void setup() {
     digitalWrite(PIN_FEEDER, LOW);
     pinMode(PIN_ACTUATOR, OUTPUT);
     AppLogic::initState(gState);
-    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-05 Inicializado"));
+    Serial.println(F("[BOOT] ControladorPeceraDistancia - SLICE-06 Inicializado"));
 }
 
 void loop() {
@@ -178,8 +178,12 @@ void loop() {
         Serial.println(rawIrCode, HEX);
     }
 
+    const bool prevFeederOut = gState.feederOutputActive;
     const bool feederActive = AppLogic::stepFeeder(gState, currentRtcMin, nowMs);
     digitalWrite(PIN_FEEDER, feederActive ? HIGH : LOW);
+    if (prevFeederOut && !feederActive) {
+        Serial.println(F("[ALIMENTADOR] Dosis completada -> Cooldown 60s y foto encolada"));
+    }
 
     stepOfflineQueueDispatch(nowMs);
     digitalWrite(PIN_ACTUATOR, gState.onBatteryBackup ? HIGH : LOW);
