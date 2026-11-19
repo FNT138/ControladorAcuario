@@ -12,18 +12,21 @@ Controlador no bloqueante multi-placa (**Arduino Nano V3**, **ESP32 Clásico** y
 | **`SLICE-02`** | `#2` | Fotoperíodo diario con `RTC DS3231` (I2C, default `10:00–18:00`) y decisión automática post-corte (`LAMP_WHITE` diurno / `LAMP_OFF` nocturno) | Documentado | [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md) |
 | **`SLICE-03`** | `#3` | Secuenciador IR TX no bloqueante (`KY-005` + `2N2222`, pulsos `250 ms`) y clonador IR RX (`KY-022`) para `ON`, `WHITE` y `OFF` | Documentado | [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md) |
 | **`SLICE-04`** | `#4` | Cola circular offline *Store-and-Forward* (`16` eventos en RAM con timestamp RTC), comandos Telegram/Serial y cámara Android sin SIM (*IP Webcam* + Hotspot) | Documentado | [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md) |
+| **`SLICE-05`** | `#5` | Dosificador de emergencia por tolva calibrada en ms (`50..2000 ms`, bloqueo en batería, cooldown `60 s`) y códigos IR 24 teclas pre-cargados (`8050SS` + `1N4007`) | Documentado | [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md) |
 
-### Resumen de Pines (`SLICE-01` + `SLICE-02` + `SLICE-03` + `SLICE-04`)
+### Resumen de Pines (`SLICE-01` a `SLICE-05`)
 
 | Señal | ESP32-C3 SuperMini | ESP32 Clásico | Arduino Nano |
 | :--- | :---: | :---: | :---: |
+| `PIN_FEEDER` (Servo 3 cables / Motor DC + `8050SS`, `+5V` antes de `D1`) | `GPIO 1` | `GPIO 25` | `D5` |
 | `PIN_MAINS_SENSE` (Divisor `10kΩ/20kΩ` antes de `D1`) | `GPIO 3` | `GPIO 34` | `D2` |
 | `RTC DS3231` — I2C (`SDA` / `SCL`) | `GPIO 6` / `GPIO 7` | `GPIO 21` / `GPIO 22` | `A4` / `A5` |
-| Emisor IR `KY-005` (vía `2N2222`: `R_B 1kΩ`, `R_C 100Ω`) | `GPIO 4` | `GPIO 4` | `D3` |
+| Emisor IR (`KY-005` / LED IR reciclado + `2N2222` o `8050SS`) | `GPIO 4` | `GPIO 4` | `D3` |
 | Receptor IR `KY-022` (`VS1838B` `38 kHz`) | `GPIO 5` | `GPIO 15` | `D4` |
 
-- **Etapa de respaldo:** Celda `UR18650ZT` conectada en `B+`/`B-` del `TP4056` (6 pines) $\rightarrow$ salida `OUT+`/`OUT-` hacia el elevador `MT3608` (calibrado a `4.8V`) $\rightarrow$ diodo Schottky `D2` (`1N5819`/`1N5822`) unido al cátodo de `D1` (`5V` USB) en el pin `5V` de la placa.
-- **Comandos Telegram / Serie (`115200 baudios`):** `/estado`, `/cola`, `/foto`, `/luz_blanca`, `/luz_off`, `/auto`, `/horario HH:MM HH:MM`, `/clonar_ir`, `/net_on`, `/net_off`. Ver detalle y flujo con celular Android sin SIM en [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md).
+- **Etapa de respaldo:** Celda `UR18650ZT` conectada en `B+`/`B-` del `TP4056` (6 pines) $\rightarrow$ salida `OUT+`/`OUT-` hacia el elevador `MT3608` (calibrado a `4.8V`) $\rightarrow$ diodo `D2` (`1N5819`/`1N5822` o `1N4007`) unido al cátodo de `D1` (`5V` USB) en el pin `5V` de la placa.
+- **Alimentador (`SLICE-05`) y protecciones:** Alimentación de potencia tomada **antes del diodo `D1` (`1N4007`)** para no descargar la `UR18650ZT`; rango `50..2000 ms`, bloqueo automático con `onBatteryBackup` y cooldown de `60 s`. Códigos IR pre-cargados de 24 teclas: `ON=0xF7C03F`, `WHITE=0xF7E01F`, `OFF=0xF740BF`.
+- **Comandos Telegram / Serie (`115200 baudios`):** `/estado`, `/cola`, `/foto`, `/luz_blanca`, `/luz_off`, `/auto`, `/horario HH:MM HH:MM`, `/clonar_ir`, `/net_on`, `/net_off`. Ver detalle completo en [`docs/uso/manual-de-uso.md`](docs/uso/manual-de-uso.md).
 
 ---
 

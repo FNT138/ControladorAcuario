@@ -53,12 +53,24 @@ Implementado en [`include/controller.h`](../../include/controller.h) mediante `p
 - **Disparo de Cámara y Procesamiento de Comandos:**
   - Ante eventos relevantes o comandos `/foto`, activa `localCameraTriggerPending` para capturar una imagen local de la pecera (termómetro, filtro e iluminación) y procesa comandos de texto plano (`char[]`, `0 bytes` de `heap`) vía Telegram o Monitor Serie.
 
+### SLICE-05: Dosificador de Emergencia por Tolva Calibrada en ms (`~3 pellets`) y Códigos IR Pre-cargados (Issue #5)
+Implementado en [`include/controller.h`](../../include/controller.h) mediante `setFeederPulseDuration()`, `triggerEmergencyFeed()`, `stepFeeder()` y la máquina de estados `FeederStatus` (`FEEDER_IDLE` $\rightarrow$ `FEEDER_DISPENSING` $\rightarrow$ `FEEDER_COOLDOWN`):
+- **Calibración no bloqueante en milisegundos (`DEFAULT_FEEDER_PULSE_MS = 350 ms`):**
+  - Acciona el servomotor o motor DC de la tolva durante un pulso exacto con `millis()` (sin `delay()`). Al completar el pulso, incrementa `feedDispensedCount` y encola `EVT_FEED_DISPENSED` con `photoRequested = true` para confirmar visualmente la caída de los pellets.
+- **3 Protecciones de Seguridad del Dosificador:**
+  1. **Rango seguro (`50..2000 ms`):** `setFeederPulseDuration()` solo acepta pulsos entre `MIN_FEEDER_PULSE_MS (50 ms)` y `MAX_FEEDER_PULSE_MS (2000 ms)`.
+  2. **Bloqueo automático en batería (`onBatteryBackup` / `MAINS_LOST`):** Si se corta la luz (`220V`), `triggerEmergencyFeed()` impide el disparo y `stepFeeder()` corta inmediatamente `feederOutputActive = false` para no drenar la celda `Sanyo UR18650ZT`.
+  3. **Cooldown anti-doble disparo (`DEFAULT_FEEDER_COOLDOWN_MS = 60000 ms`):** Tras dispensar una ración, permanece `60 s` en `FEEDER_COOLDOWN` bloqueando reintentos accidentales (salvo anulación explícita con `forceIgnoreCooldown = true`).
+- **Códigos IR NEC de 24 teclas pre-cargados:**
+  - `initState()` carga por defecto los códigos universales del control de 24 teclas (`ON = 0xF7C03F`, `WHITE = 0xF7E01F`, `OFF = 0xF740BF`), listos para usar con LED IR reciclado + transistor `8050SS` sin necesidad de clonar primero.
+
 ---
 
-## 2. Tabla de Pines por Placa (`SLICE-01` + `SLICE-02` + `SLICE-03`)
+## 2. Tabla de Pines por Placa (`SLICE-01` a `SLICE-05`)
 
 | Señal / Función | ESP32-C3 SuperMini | ESP32 Clásico (NodeMCU-32S / DevKit) | Arduino Nano V3 | Notas Eléctricas |
 | :--- | :---: | :---: | :---: | :--- |
+| **`PIN_FEEDER`** (Tolva Servo / Motor DC) | **`GPIO 1`** | **`GPIO 25`** | **`D5`** | Excita servo o transistor NPN `8050SS`; potencia `+5V` tomada **antes de `D1` (`1N4007`)** |
 | **`PIN_MAINS_SENSE`** (Detección 220V) | **`GPIO 3`** | **`GPIO 34`** *(solo entrada)* | **`D2`** *(INT0)* | Conectado al punto medio del divisor `10kΩ / 20kΩ` (`HIGH` ~`3.3V` = 220V OK, `LOW` `0V` = Corte) |
 | **`RTC DS3231` — `SDA`** (Bus I2C `0x68`) | **`GPIO 6`** | **`GPIO 21`** | **`A4`** | Línea de datos I2C hacia el módulo `RTC DS3231` (`ZS-042` con pila `CR2032`) |
 | **`RTC DS3231` — `SCL`** (Bus I2C `0x68`) | **`GPIO 7`** | **`GPIO 22`** | **`A5`** | Línea de reloj I2C hacia el módulo `RTC DS3231` |
@@ -181,8 +193,47 @@ El sistema aprovecha un **celular Android sin tarjeta SIM** enchufado permanente
 
 ---
 
-## 7. Puesta en Marcha y Verificación
-1. Verificar con multímetro que sin cargador USB (`220V` desconectado) el pin `MAINS_SENSE` marque `0V` y la placa siga encendida desde la batería (`~4.3V–4.5V` tras `D2`).
-2. Abrir el monitor serie a **`115200 baudios`** para verificar `[BOOT] ControladorPeceraDistancia - SLICE-04 Inicializado`, la hora del `RTC DS3231` y las transiciones IR/energía.
+## 7. Dosificador de Emergencia (`SLICE-05`) y Etapa IR con Componentes Reciclados
+
+### A. Conexionado del Alimentador (Servomotor 3 Cables o Motor DC 2 Cables)
+**Regla crítica de energía:** La alimentación positiva (`+5V`) del alimentador se toma **siempre antes del diodo `D1` (`1N4007`)**, directo desde la salida del cargador USB `220V`. De este modo, si se corta la luz, la tolva nunca consume energía de la celda `Sanyo UR18650ZT`.
+
+- **Opción 1 — Servomotor de 3 cables (ej. SG90 / MG90S):**
+  - **Señal (naranja/amarillo):** al pin `PIN_FEEDER` (`GPIO 1` en ESP32-C3 SuperMini, `GPIO 25` en ESP32 clásico o `D5` en Arduino Nano).
+  - **VCC (rojo):** al nodo `+5V` **antes del diodo `D1` (`1N4007`)**.
+  - **GND (marrón/negro):** a **`GND`** común.
+- **Opción 2 — Motor DC de 2 cables + Transistor NPN `8050SS`:**
+  - `PIN_FEEDER` (`GPIO 1` / `GPIO 25` / `D5`) $\rightarrow$ resistencia de base (ej. `1kΩ` o `4.5kΩ`) $\rightarrow$ **Base** del **`8050SS`**.
+  - **Emisor** del `8050SS` $\rightarrow$ **`GND`**.
+  - **Motor DC:** un terminal al nodo `+5V` **antes del diodo `D1` (`1N4007`)** y el otro al **Colector** del `8050SS`, colocando un diodo **`1N4007` en antiparalelo** (cátodo a `+5V`, ánodo al colector) como protección contra picos inductivos.
+
+```text
+[+5V Cargador 220V (ANTES de D1 1N4007)] ──┬──► [Ánodo D1 1N4007] ──► Bus 5V Placa
+                                           │
+   Opción Servo (3 cables): VCC (Rojo) ◄───┤   Señal ◄── PIN_FEEDER (GPIO 1 / GPIO 25 / D5)
+                                           │
+   Opción Motor DC + 8050SS:               └──► [+ Motor DC] ──► [- Motor DC] ──► Colector (8050SS)
+                                                (con 1N4007 en antiparalelo)          ▲
+                                                PIN_FEEDER ──► [R base] ──► Base ─────┘ (Emisor ──► GND)
+```
+
+### B. Las 3 Protecciones de Seguridad del Dosificador
+1. **Rango de pulso calibrado (`50..2000 ms`, default `350 ms`):** `setFeederPulseDuration()` rechaza valores fuera de `50..2000 ms` para evitar sobrealimentar la pecera (`~3 pellets` por pulso en `350 ms`).
+2. **Bloqueo automático en batería (`onBatteryBackup` / `MAINS_LOST`):** `triggerEmergencyFeed()` rechaza el disparo y `stepFeeder()` desactiva `feederOutputActive` si hay corte de `220V`, protegiendo la celda `Sanyo UR18650ZT`.
+3. **Cooldown anti-doble disparo (`60 s`):** Tras completar el pulso (`EVT_FEED_DISPENSED`), el sistema entra `60000 ms` en `FEEDER_COOLDOWN` ignorando disparos repetidos accidentales (salvo `forceIgnoreCooldown = true`).
+
+### C. Etapa IR con LED Reciclado + `8050SS` + `22kΩ`/`4.5kΩ` + `1N4007` y Códigos Pre-cargados
+- **Códigos NEC universales pre-cargados (control remoto de 24 teclas):**
+  - **`ON`:** `0xF7C03F` (`0x00F7C03F`)
+  - **`WHITE`:** `0xF7E01F` (`0x00F7E01F`)
+  - **`OFF`:** `0xF740BF` (`0x00F740BF`)
+- **Variante económica con componentes reciclados:**
+  - En lugar del módulo `KY-005` + `2N2222`, puede usarse un **LED IR reciclado** accionado por un transistor **`8050SS`** desde `GPIO 4` / `D3`, junto con resistencias disponibles de **`22kΩ` / `4.5kΩ`** (para adaptación de base/divisor de entrada) y diodos **`1N4007`** en la etapa de aislamiento de alimentación.
+
+---
+
+## 8. Puesta en Marcha y Verificación
+1. Verificar con multímetro que sin cargador USB (`220V` desconectado) el pin `MAINS_SENSE` marque `0V`, el alimentador (`+5V` antes de `D1`) quede sin tensión y la placa siga encendida desde la batería (`TP4056` + `MT3608` + `D2`).
+2. Abrir el monitor serie a **`115200 baudios`** para verificar `[BOOT] ControladorPeceraDistancia - SLICE-05 Inicializado`, la hora del `RTC DS3231` y las transiciones IR/energía/tolva.
 3. Probar la cola offline enviando `/net_off`, ejecutando `/foto` y desconectando/reconectando el cargador `5V`, y luego enviar `/net_on` para observar el despacho FIFO por `[TELEGRAM-TX]`.
 
