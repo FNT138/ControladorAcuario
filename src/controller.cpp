@@ -464,7 +464,12 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     if (strcmp(cmd, "/help") == 0 || strcmp(cmd, "/ayuda") == 0) {
-        copyText(replyBuf, replyBufSize, "Cmds: /estado /cola /foto /luz_on /luz_blanca /luz_off /auto /horario /alimentar /calibrar_ms");
+        copyText(replyBuf, replyBufSize, "Cmds: /estado /eventos /cola /foto /luz_on /luz_blanca /luz_off /auto /horario /alimentar");
+        return true;
+    }
+
+    if (strcmp(cmd, "/eventos") == 0) {
+        copyText(replyBuf, replyBufSize, "Evt: 1=Corte220V 2=Vuelve220V 3=LuzBlanca 4=LuzOff 5=ProgOn 6=ProgOff 7=Foto 8=Comida");
         return true;
     }
 
