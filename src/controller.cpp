@@ -469,7 +469,7 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     if (strcmp(cmd, "/eventos") == 0) {
-        copyText(replyBuf, replyBufSize, "Evt: 1=Corte220V 2=Vuelve220V 3=LuzBlanca 4=LuzOff 5=ProgOn 6=ProgOff 7=Foto 8=Comida");
+        copyText(replyBuf, replyBufSize, "Eventos:\n1=Corte 220V | 2=Vuelve 220V\n3=Luz Blanca | 4=Luz Off\n5=Prog On | 6=Prog Off\n7=Foto | 8=Comida");
         return true;
     }
 
