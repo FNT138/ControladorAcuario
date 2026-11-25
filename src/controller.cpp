@@ -464,7 +464,7 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     if (strcmp(cmd, "/help") == 0 || strcmp(cmd, "/ayuda") == 0) {
-        copyText(replyBuf, replyBufSize, "Cmds: /estado /cola /foto /luz_blanca /luz_off /auto /horario /alimentar /calibrar_ms");
+        copyText(replyBuf, replyBufSize, "Cmds: /estado /cola /foto /luz_on /luz_blanca /luz_off /auto /horario /alimentar /calibrar_ms");
         return true;
     }
 
@@ -483,6 +483,13 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
             return false;
         }
         copyText(replyBuf, replyBufSize, "OK: Alimentacion forzada (~3 pellets)");
+        return true;
+    }
+
+    if (strcmp(cmd, "/luz_on") == 0) {
+        state.controlPolicy = POLICY_MANUAL_OVERRIDE;
+        requestLampTransition(state, LAMP_WHITE, currentMs);
+        copyText(replyBuf, replyBufSize, "OK: Luz encendida (ON + Blanca)");
         return true;
     }
 
