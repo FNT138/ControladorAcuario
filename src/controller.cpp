@@ -463,6 +463,11 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
         return true;
     }
 
+    if (strcmp(cmd, "/help") == 0 || strcmp(cmd, "/ayuda") == 0) {
+        copyText(replyBuf, replyBufSize, "Cmds: /estado /cola /foto /luz_blanca /luz_off /auto /horario /alimentar /calibrar_ms");
+        return true;
+    }
+
     if (strcmp(cmd, "/alimentar") == 0) {
         if (!triggerEmergencyFeed(state, state.currentRtcMin, currentMs, false)) {
             copyText(replyBuf, replyBufSize, "ERR: Alimentador bloqueado (bateria/cooldown)");
