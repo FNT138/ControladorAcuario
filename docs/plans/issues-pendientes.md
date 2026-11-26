@@ -10,3 +10,4 @@
 | **#4** | `SLICE-04`: Cola Circular Offline (*Store-and-Forward*) y Telegram | Publicada | `feat(telemetria-cola): encolar eventos sin conexion y despachar a telegram al reconectar (Closes #4)` |
 | **#5** | `SLICE-05`: Dosificador No Bloqueante de Emergencia en `ms` (~3 Pellets) | Publicada | `feat(alimentador): implementar dosificador no bloqueante en ms con cooldown y seguridad (Closes #5)` |
 | **#6** | `SLICE-06`: Comandos Remotos `/alimentar`, `/alimentar_forzar` y `/calibrar_ms` | Publicada | `feat(alimentador-cmd): agregar comandos /alimentar y /calibrar_ms con telemetria (Closes #6)` |
+| **#7** | `SLICE-07`: Medición de Voltaje y Porcentaje de Batería `18650` (`ADC` + `/bateria`) | Publicada | `feat(bateria): medir voltaje de celda 18650 y reportar porcentaje en /estado y /bateria (Closes #7)` |

@@ -154,6 +154,10 @@ bool setFeederPulseDuration(SystemState& state, uint16_t pulseMs);
 bool triggerEmergencyFeed(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs, bool forceIgnoreCooldown);
 bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs);
 
+// SLICE-07: Medición de Voltaje y Porcentaje de Batería 18650 (ADC)
+uint8_t computeBatteryPercent(uint16_t batteryMv);
+void updateBatteryReading(SystemState& state, uint16_t batteryMv);
+
 } // namespace AppLogic
 ```
 
@@ -324,3 +328,27 @@ bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs);
 - **Conventional Commit Asignado:**
   - Implementación: `feat(alimentador-cmd): agregar comandos /alimentar y /calibrar_ms con telemetria (Closes #6)`
   - Documentación: `docs(alimentador-cmd): documentar calibracion de 3 pellets y comandos de alimentacion (Refs #6)`
+
+---
+
+## SLICE-07: Medición de Voltaje y Porcentaje de Batería `UR18650ZT` (`ADC` + `/bateria`)
+
+- **Funcionalidad End-to-End:**
+  - Leer el voltaje real de la celda `Sanyo UR18650ZT` (`3.00V` = `0%` a `4.20V` = `100%`) mediante un divisor resistivo de **2 resistencias iguales** (ej. `2x 22kΩ` o `2x 4.7kΩ`) desde **`OUT+` del `TP4056`** hacia **`GPIO 0` (`ADC1`)** en `ESP32-C3 SuperMini` (`GPIO 35` en `ESP32`, `A0` en `Arduino Nano`).
+  - **Lógica Pura (`include/controller.h` + `src/controller.cpp`):**
+    - Constantes: `BATTERY_EMPTY_MV = 3000`, `BATTERY_FULL_MV = 4200`.
+    - Campos en `SystemState`: `uint16_t batteryMv; uint8_t batteryPercent;`.
+    - `uint8_t computeBatteryPercent(uint16_t batteryMv)`: convierte milivoltios a `0..100%` acotado (`<= 3000 mV -> 0%`, `>= 4200 mV -> 100%`).
+    - `void updateBatteryReading(SystemState& state, uint16_t batteryMv)`: actualiza `state.batteryMv` y `state.batteryPercent`.
+    - Comandos remotos: nuevo comando **`/bateria`** (devuelve `BAT=X.XXV (YY%)`), suma `BAT=YY%` a **`/estado`** y agrega `/bateria` a **`/help`**.
+  - **Capa HAL (`src/main.cpp`):** Muestreo no bloqueante cada `1000 ms` por `analogReadMilliVolts(PIN_BAT_ADC) * 2` (en ESP32) o `(analogRead(A0) * 5000UL * 2UL) / 1023UL` (en Nano).
+- **Archivos a Modificar por el `implementador`:**
+  1. `include/controller.h`
+  2. `src/controller.cpp`
+  3. `src/main.cpp`
+- **Criterios de Verificación para el `tester`:**
+  - Tests unitarios nativos validando `computeBatteryPercent` (`2800mV -> 0%`, `3000mV -> 0%`, `3600mV -> 50%`, `4200mV -> 100%`, `4300mV -> 100%`), `updateBatteryReading`, `/bateria` y presencia de `BAT=` en `/estado`.
+  - Compilación limpia (`0 warnings`, `RAM < 65%` en Arduino Nano).
+- **Conventional Commit Asignado:**
+  - Implementación: `feat(bateria): medir voltaje de celda 18650 y reportar porcentaje en /estado y /bateria (Closes #7)`
+  - Documentación: `docs(bateria): documentar divisor adc en gpio 0 y comando /bateria (Refs #7)`
