@@ -244,7 +244,10 @@ void evaluatePhotoperiod(SystemState& state, uint16_t currentRtcMin) {
 
     if (state.postRestoreActionPending) {
         state.postRestoreActionPending = false;
-        const LampTargetMode desired = within ? LAMP_WHITE : LAMP_OFF;
+        LampTargetMode desired = within ? LAMP_WHITE : LAMP_OFF;
+        if (state.controlPolicy == POLICY_MANUAL_OVERRIDE && state.targetLampMode != LAMP_MODE_UNKNOWN) {
+            desired = state.targetLampMode;
+        }
         requestLampTransition(state, desired, state.mainsTransitionMs);
         state.lastWithinSchedule = within;
         state.scheduleInitialized = true;
