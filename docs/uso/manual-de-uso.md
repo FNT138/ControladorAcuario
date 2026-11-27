@@ -73,6 +73,17 @@ Implementado en [`src/controller.cpp`](../../src/controller.cpp) dentro de `AppL
 - **Telemetría ampliada en `/estado`:**
   - Añade `FEED_MS=<ms>` (duración calibrada actual) y `DOSIS=<N>` (`feedDispensedCount`, total de raciones entregadas).
 
+### SLICE-07: Telemetría de Batería 18650 por ADC (`GPIO 0`) (Issue #7)
+Implementado en [`include/controller.h`](../../include/controller.h) y [`src/controller.cpp`](../../src/controller.cpp) mediante `computeBatteryPercent()` y `updateBatteryReading()`:
+- **Medición de tensión (`GPIO 0`, ADC1):** lee la celda `Sanyo UR18650ZT` (`TP4056 OUT+`) a través de un divisor resistivo simétrico (`2x 22kΩ`) y convierte la lectura a porcentaje (`3.00V = 0%` a `4.20V = 100%`).
+- **Comando `/bateria` y telemetría en `/estado`:** muestra porcentaje, voltaje real y alerta si la carga cae por debajo de `20%`.
+
+### SLICE-08: Refactor de Mensajes Telegram con Emojis, Tarjetas Multilínea y Cobertura Total de Comandos (Issue #8)
+Implementado en [`src/controller.cpp`](../../src/controller.cpp) y [`src/main.cpp`](../../src/main.cpp):
+- **Tarjetas multilínea claras para celular:** todas las alertas (arranque `[PECERA ONLINE]`, corte/retorno `220V`, eventos de luz, fotoperíodo, tolva, cámara y batería) y todas las respuestas de comandos se muestran con emojis semánticos, líneas cortas y sin tablas rotas ni códigos técnicos crudos.
+- **Buffers UTF-8 ampliados y escape JSON seguro:** en ESP32-C3 el buffer de respuesta soporta `360 bytes` (`escaped[480]` / `payload[560]` en `sendTelegramMessage()`) con escape de `\n` y `"` para evitar mensajes truncados o errores JSON.
+- **Cobertura completa de comandos:** `/estado`, `/bateria`, `/eventos`, `/cola`, `/foto`, `/foto_flash`, `/live`, `/cam_ip`, `/luz_on`, `/luz_blanca`, `/luz_off`, `/auto`, `/horario`, `/alimentar`, `/alimentar_forzar`, `/calibrar_ms`, `/clonar_ir`, `/help` / `/ayuda`.
+
 ---
 
 ## 2. Tabla de Pines por Placa (`SLICE-01` a `SLICE-06`)
