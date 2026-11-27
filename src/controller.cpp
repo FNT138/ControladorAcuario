@@ -467,54 +467,61 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     if (strcmp(cmd, "/help") == 0 || strcmp(cmd, "/ayuda") == 0) {
-        copyText(replyBuf, replyBufSize, "Cmds: /estado /bateria /eventos /cola /foto /foto_flash /live /luz_on /luz_blanca /luz_off /auto /horario /alimentar");
+        copyText(replyBuf, replyBufSize,
+                 "🐠 COMANDOS DISPONIBLES:\n"
+                 "📊 /estado /bateria /cola /eventos\n"
+                 "📸 /foto /foto_flash /live /cam_ip\n"
+                 "💡 /luz_on /luz_blanca /luz_off /auto /horario\n"
+                 "🐟 /alimentar /alimentar_forzar /calibrar_ms");
         return true;
     }
 
     if (strcmp(cmd, "/eventos") == 0) {
         copyText(replyBuf, replyBufSize,
-                 "EVENTOS: 1=Corte220V 2=Vuelve220V 3=LuzBlanca 4=LuzOff 5=ProgOn 6=ProgOff 7=Foto 8=Comida\n"
-                 "LUZ: 0=Desc 1=OFF 2=BLANCA\n"
-                 "FOTO: 0=No 1=Si");
+                 "📋 GUIA DE EVENTOS:\n"
+                 "🔴 1: Corte 220V | 🟢 2: Vuelve 220V\n"
+                 "💡 3: Luz Blanca | 🌙 4: Luz Off\n"
+                 "⏰ 5: Horario On | ⏰ 6: Horario Off\n"
+                 "📸 7: Foto | 🐟 8: Comida");
         return true;
     }
 
     if (strcmp(cmd, "/alimentar") == 0) {
         if (!triggerEmergencyFeed(state, state.currentRtcMin, currentMs, false)) {
-            copyText(replyBuf, replyBufSize, "ERR: Alimentador bloqueado (bateria/cooldown)");
+            copyText(replyBuf, replyBufSize, "⚠️ Alimentador bloqueado (sin 220V o en espera de 60s)");
             return false;
         }
-        copyText(replyBuf, replyBufSize, "OK: Alimentando (~3 pellets)");
+        copyText(replyBuf, replyBufSize, "🐟 Alimentando pecera (~3 pellets)...");
         return true;
     }
 
     if (strcmp(cmd, "/alimentar_forzar") == 0) {
         if (!triggerEmergencyFeed(state, state.currentRtcMin, currentMs, true)) {
-            copyText(replyBuf, replyBufSize, "ERR: Alimentador bloqueado en bateria");
+            copyText(replyBuf, replyBufSize, "🔴 Bloqueado: sin energia 220V (protegiendo bateria)");
             return false;
         }
-        copyText(replyBuf, replyBufSize, "OK: Alimentacion forzada (~3 pellets)");
+        copyText(replyBuf, replyBufSize, "🐟 Alimentacion forzada (~3 pellets)...");
         return true;
     }
 
     if (strcmp(cmd, "/luz_on") == 0) {
         state.controlPolicy = POLICY_MANUAL_OVERRIDE;
         requestLampTransition(state, LAMP_WHITE, currentMs);
-        copyText(replyBuf, replyBufSize, "OK: Luz encendida (ON + Blanca)");
+        copyText(replyBuf, replyBufSize, "💡 Luz encendida en modo BLANCO (manual)");
         return true;
     }
 
     if (strcmp(cmd, "/luz_blanca") == 0) {
         state.controlPolicy = POLICY_MANUAL_OVERRIDE;
         requestLampTransition(state, LAMP_WHITE, currentMs);
-        copyText(replyBuf, replyBufSize, "OK: Luz blanca (manual)");
+        copyText(replyBuf, replyBufSize, "💡 Luz fijada en modo BLANCO (manual)");
         return true;
     }
 
     if (strcmp(cmd, "/luz_off") == 0) {
         state.controlPolicy = POLICY_MANUAL_OVERRIDE;
         requestLampTransition(state, LAMP_OFF, currentMs);
-        copyText(replyBuf, replyBufSize, "OK: Luz apagada (manual)");
+        copyText(replyBuf, replyBufSize, "🌙 Luz APAGADA (manual)");
         return true;
     }
 
@@ -522,20 +529,20 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
         state.controlPolicy = POLICY_AUTO_RTC;
         state.scheduleInitialized = false;
         evaluatePhotoperiod(state, state.currentRtcMin);
-        copyText(replyBuf, replyBufSize, "OK: Modo automatico RTC");
+        copyText(replyBuf, replyBufSize, "⏰ Modo AUTOMATICO activado (segun horario)");
         return true;
     }
 
     if (strcmp(cmd, "/foto") == 0) {
         pushOfflineEvent(state, EVT_PHOTO_REQUESTED, state.currentRtcMin, state.appliedLampMode, true);
         state.localCameraTriggerPending = true;
-        copyText(replyBuf, replyBufSize, "OK: Foto solicitada");
+        copyText(replyBuf, replyBufSize, "📸 Capturando foto de la pecera...");
         return true;
     }
 
     if (strcmp(cmd, "/clonar_ir") == 0) {
         startIrClone(state, CLONE_WAIT_ON);
-        copyText(replyBuf, replyBufSize, "OK: Clonado IR iniciado (ON)");
+        copyText(replyBuf, replyBufSize, "📡 Clonado IR iniciado: apunta el control y pulsa ON");
         return true;
     }
 
