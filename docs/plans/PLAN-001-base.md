@@ -352,3 +352,28 @@ void updateBatteryReading(SystemState& state, uint16_t batteryMv);
 - **Conventional Commit Asignado:**
   - Implementación: `feat(bateria): medir voltaje de celda 18650 y reportar porcentaje en /estado y /bateria (Closes #7)`
   - Documentación: `docs(bateria): documentar divisor adc en gpio 0 y comando /bateria (Refs #7)`
+
+---
+
+## SLICE-08: Refactor de Mensajería Telegram con Emojis, Formato Limpio y Cobertura Total de Comandos
+
+- **Funcionalidad End-to-End:**
+  - **Refactor de respuestas y alertas (`src/controller.cpp` + `src/main.cpp`):**
+    - Reemplazar textos técnicos crudos (`Evento=3 Luz=2 Foto=1`, `220V:OK LUZ:OFF COLA:0`) por tarjetas limpias multilínea con emojis (`⚡`, `🔋`, `💡`, `🐟`, `📸`, `⏰`, `📶`, `🌡️`, `🟢`, `🔴`, `🟡`), fáciles de leer en pantalla de celular sin tablas rotas.
+    - Garantizar que **todo subsistema del controlador** tenga su comando dedicado y respuesta clara:
+      - Energía y batería: `/estado`, `/bateria`, `/cola`
+      - Iluminación y fotoperíodo: `/luz_on`, `/luz_blanca`, `/luz_off`, `/auto`, `/horario`, `/clonar_ir`
+      - Alimentador de emergencia: `/alimentar`, `/alimentar_forzar`, `/calibrar_ms`
+      - Cámara y monitoreo: `/foto`, `/foto_flash`, `/live`, `/cam_ip`
+      - Ayuda y referencia: `/help` (`/ayuda`), `/eventos`
+    - Mantener compatibilidad regresiva con los 17 tests unitarios existentes (`test/test_native/test_main.cpp`) y agregar tests de verificación de formato legible.
+    - Optimizar buffers `char[]` estáticos y `snprintf` en `src/main.cpp` para mantener bajo consumo de RAM (`< 15%` en ESP32-C3 / `< 65%` en Arduino Nano).
+- **Archivos a Modificar por el `implementador`:**
+  1. `src/controller.cpp`
+  2. `src/main.cpp`
+- **Criterios de Verificación para el `tester`:**
+  - `17+` tests unitarios nativos en `PASS` (`0 Failures`, `0 warnings`).
+  - Compilación limpia para `ESP32-C3` y `Arduino Nano`.
+- **Conventional Commit Asignado:**
+  - Implementación: `refactor(mensajes): mejorar formato de alertas y respuestas telegram con emojis y cobertura total (Closes #8)`
+  - Documentación: `docs(mensajes): actualizar guia de comandos telegram y menu botfather (Refs #8)`
