@@ -16,6 +16,8 @@ static const uint16_t MIN_FEEDER_PULSE_MS           = 50;
 static const uint16_t MAX_FEEDER_PULSE_MS           = 2000;
 static const uint16_t DEFAULT_FEEDER_PULSE_MS       = 350;
 static const uint32_t DEFAULT_FEEDER_COOLDOWN_MS    = 60000;
+static const uint16_t BATTERY_EMPTY_MV              = 3000;
+static const uint16_t BATTERY_FULL_MV               = 4200;
 
 enum MainsStatus : uint8_t {
     MAINS_OK = 0,
@@ -130,6 +132,10 @@ struct SystemState {
     uint32_t feederStartMs;
     uint32_t feederCooldownMs;
     uint8_t feedDispensedCount;
+
+    // SLICE-07: Medición de Voltaje y Porcentaje de Batería 18650
+    uint16_t batteryMv;
+    uint8_t batteryPercent;
 };
 
 // Base
@@ -160,5 +166,9 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
 bool setFeederPulseDuration(SystemState& state, uint16_t pulseMs);
 bool triggerEmergencyFeed(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs, bool forceIgnoreCooldown);
 bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs);
+
+// SLICE-07: Medición de Voltaje y Porcentaje de Batería 18650 (ADC)
+uint8_t computeBatteryPercent(uint16_t batteryMv);
+void updateBatteryReading(SystemState& state, uint16_t batteryMv);
 
 } // namespace AppLogic

@@ -147,6 +147,9 @@ void initState(SystemState& state) {
     state.feederStartMs = 0;
     state.feederCooldownMs = DEFAULT_FEEDER_COOLDOWN_MS;
     state.feedDispensedCount = 0;
+
+    state.batteryMv = 0;
+    state.batteryPercent = 0;
 }
 
 bool evaluateThreshold(SystemState& state, uint16_t sensorReading, uint16_t threshold, uint32_t currentMs, uint32_t intervalMs) {
@@ -464,7 +467,7 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
     }
 
     if (strcmp(cmd, "/help") == 0 || strcmp(cmd, "/ayuda") == 0) {
-        copyText(replyBuf, replyBufSize, "Cmds: /estado /eventos /cola /foto /foto_flash /live /luz_on /luz_blanca /luz_off /auto /horario /alimentar");
+        copyText(replyBuf, replyBufSize, "Cmds: /estado /bateria /eventos /cola /foto /foto_flash /live /luz_on /luz_blanca /luz_off /auto /horario /alimentar");
         return true;
     }
 
@@ -541,12 +544,30 @@ bool processRemoteCommand(SystemState& state, const char* cmd, uint16_t currentR
         appendText(replyBuf, replyBufSize, state.onBatteryBackup ? "CORTE" : "OK");
         appendText(replyBuf, replyBufSize, " LUZ:");
         appendText(replyBuf, replyBufSize, (state.targetLampMode == LAMP_WHITE) ? "BLANCA" : "OFF");
-        appendText(replyBuf, replyBufSize, " COLA:");
+        appendText(replyBuf, replyBufSize, " BAT:");
+        appendUint(replyBuf, replyBufSize, state.batteryPercent);
+        appendText(replyBuf, replyBufSize, "% COLA:");
         appendUint(replyBuf, replyBufSize, state.queueCount);
         appendText(replyBuf, replyBufSize, " FEED_MS=");
         appendUint(replyBuf, replyBufSize, state.feederPulseMs);
         appendText(replyBuf, replyBufSize, " DOSIS=");
         appendUint(replyBuf, replyBufSize, state.feedDispensedCount);
+        return true;
+    }
+
+    if (strcmp(cmd, "/bateria") == 0) {
+        const uint16_t volts = state.batteryMv / 1000U;
+        const uint16_t centi = (state.batteryMv % 1000U) / 10U;
+        copyText(replyBuf, replyBufSize, "BAT=");
+        appendUint(replyBuf, replyBufSize, volts);
+        appendText(replyBuf, replyBufSize, ".");
+        if (centi < 10U) {
+            appendText(replyBuf, replyBufSize, "0");
+        }
+        appendUint(replyBuf, replyBufSize, centi);
+        appendText(replyBuf, replyBufSize, "V (");
+        appendUint(replyBuf, replyBufSize, state.batteryPercent);
+        appendText(replyBuf, replyBufSize, "%)");
         return true;
     }
 
@@ -630,6 +651,23 @@ bool stepFeeder(SystemState& state, uint16_t currentRtcMin, uint32_t currentMs) 
 
     state.feederOutputActive = false;
     return false;
+}
+
+uint8_t computeBatteryPercent(uint16_t batteryMv) {
+    if (batteryMv <= BATTERY_EMPTY_MV) {
+        return 0;
+    }
+    if (batteryMv >= BATTERY_FULL_MV) {
+        return 100;
+    }
+    const uint32_t span = static_cast<uint32_t>(BATTERY_FULL_MV - BATTERY_EMPTY_MV);
+    const uint32_t above = static_cast<uint32_t>(batteryMv - BATTERY_EMPTY_MV);
+    return static_cast<uint8_t>((above * 100UL) / span);
+}
+
+void updateBatteryReading(SystemState& state, uint16_t batteryMv) {
+    state.batteryMv = batteryMv;
+    state.batteryPercent = computeBatteryPercent(batteryMv);
 }
 
 } // namespace AppLogic

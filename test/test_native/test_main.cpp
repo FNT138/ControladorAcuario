@@ -431,6 +431,31 @@ void test_slice06_feeder_remote_commands(void) {
     TEST_ASSERT_NOT_NULL(strstr(reply, "DOSIS="));
 }
 
+void test_slice07_battery_percentage_and_commands(void) {
+    AppLogic::SystemState st;
+    AppLogic::initState(st);
+    char reply[160];
+
+    // Verificación de extremos y punto medio
+    TEST_ASSERT_EQUAL_UINT8(0, AppLogic::computeBatteryPercent(2800));
+    TEST_ASSERT_EQUAL_UINT8(0, AppLogic::computeBatteryPercent(3000));
+    TEST_ASSERT_EQUAL_UINT8(50, AppLogic::computeBatteryPercent(3600));
+    TEST_ASSERT_EQUAL_UINT8(100, AppLogic::computeBatteryPercent(4200));
+    TEST_ASSERT_EQUAL_UINT8(100, AppLogic::computeBatteryPercent(4350));
+
+    // Actualización de lectura y comandos /bateria y /estado
+    AppLogic::updateBatteryReading(st, 4080); // (4080-3000)/1200 = 90%
+    TEST_ASSERT_EQUAL_UINT16(4080, st.batteryMv);
+    TEST_ASSERT_EQUAL_UINT8(90, st.batteryPercent);
+
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/bateria", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "4.08V"));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "90%"));
+
+    TEST_ASSERT_TRUE(AppLogic::processRemoteCommand(st, "/estado", 750, 1000, reply, sizeof(reply)));
+    TEST_ASSERT_NOT_NULL(strstr(reply, "BAT:90%"));
+}
+
 int main(int argc, char **argv) {
     UNITY_BEGIN();
     RUN_TEST(test_initial_state_is_clean);
@@ -449,5 +474,6 @@ int main(int argc, char **argv) {
     RUN_TEST(test_slice05_feeder_pulse_duration_bounds);
     RUN_TEST(test_slice05_feeder_dispense_and_cooldown_and_battery_lock);
     RUN_TEST(test_slice06_feeder_remote_commands);
+    RUN_TEST(test_slice07_battery_percentage_and_commands);
     return UNITY_END();
 }
